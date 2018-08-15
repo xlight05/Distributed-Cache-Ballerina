@@ -2,6 +2,8 @@ import ballerina/http;
 import ballerina/log;
 
 
+map<CacheEntry> entries;
+
 
 service<http:Service> data bind { port: 6969 } {
 
@@ -10,6 +12,7 @@ service<http:Service> data bind { port: 6969 } {
         path: "/recieve"
     }
     recieve(endpoint caller, http:Request req) {
+
 
         http:Response res = new;
 
