@@ -2,22 +2,22 @@ import ballerina/http;
 import ballerina/log;
 
 
-//map<CacheEntry> entries;
+map<CacheEntry> cacheEntries;
 
 
 service<http:Service> data bind { port:  6969 } {
 
     @http:ResourceConfig {
         methods: ["GET"],
-        path: "/get"
+        path: "/get/{key}"
     }
-    get(endpoint caller, http:Request req) {
 
-
+    get(endpoint caller, http:Request req,string key) {
+        CacheEntry default;
+        CacheEntry obj =cacheEntries[key]?:default;
         http:Response res = new;
-
-        res.setPayload("Hello, World! GET Data");
-
+        json payload = check<json>obj;
+        res.setJsonPayload(payload, contentType = "application/json");
         caller->respond(res) but { error e => log:printError(
                                                   "Error sending response", err = e) };
     }
@@ -36,10 +36,14 @@ service<http:Service> data bind { port:  6969 } {
             json jsonObj=> {jsObj=jsonObj;}
             error err => {io:println(err);}
         }
+        string key = jsObj["key"].toString();
+        jsObj.remove(key);
+        cacheEntries[key]=check<CacheEntry>jsObj;
 
-        res.setJsonPayload(jsObj);
+        res.setJsonPayload(untaint jsObj);
 
         caller->respond(res) but { error e => log:printError(
                                                   "Error sending response", err = e) };
     }
+
 }

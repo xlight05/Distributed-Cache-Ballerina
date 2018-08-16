@@ -116,11 +116,11 @@ service<http:Service> node bind { port: 7000 } {
 //{ url: "http://localhost:8080/mock2" },
 //{ url: "http://localhost:8080/mock3" }
 //]
-function getLBTargetList() returns json[] {
-    foreach v in nodeList {
-        json  x = {url:v};
-    }
-}
+//function getLBTargetList() returns json[] {
+//    foreach v in nodeList {
+//        json  x = {url:v};
+//    }
+//}
 
 @http:ServiceConfig {
     basePath: "/lb"
@@ -145,7 +145,7 @@ service<http:Service> loadBalancerDemoService bind { port: 9998 } {
             error err => {io:println(err);}
         }
         http:Request outRequest = new;
-        outRequest.setPayload(requestPayload);
+        outRequest.setPayload(untaint requestPayload);
         var response = lbBackendEP->post("/", outRequest);
 
         match response {

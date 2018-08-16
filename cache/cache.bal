@@ -35,6 +35,8 @@ public type Cache object {
         CacheEntry entry = {value:value,lastAccessedTime:currentTime,timesAccessed:0,createdTime:currentTime};
         //entries[key]=entry;
         json j = check <json>entry;
+        j["key"]= key;
+        
 
         //select node
         var response = clientEndpoint->post("/lb",untaint j);
@@ -70,6 +72,7 @@ public type Cache object {
         //entry.lastAccessedTime = currentTime;
         ////entries[key]= entry;
         //return entry.value;
+        return ();
     }
 
     public function size() returns int {
