@@ -7,20 +7,27 @@ type Node record {
 
 };
 
-map <string> nodeList;
+string [] nodeList;
 
-function getNodeList() returns map<string> {
+function getNodeList() returns string[] {
     return nodeList;
 }
 
-function addrServer(string id,string ip){
-    nodeList["id"] = "ip";
+function addServer(string ip){
+    nodeList[lengthof nodeList] = ip;
     io:println(string `{{ip}} Added`);
+
 }
 
-function removeServer(string id,string ip) {
-    _ = nodeList.remove("id");
-    io:println(string `{{ip}} Removed`);
+function removeServer(string ip) returns boolean{
+    boolean found = false;
+    foreach k,v in nodeList{
+        if (v==ip){
+            v="";
+            found=true;
+        }
+    }
+    return found;
 }
 
 service<http:Service> node bind { port: 7000 } {
@@ -30,13 +37,21 @@ service<http:Service> node bind { port: 7000 } {
         path: "/add"
     }
     add(endpoint caller, http:Request req) {
+        json|error obj = req.getJsonPayload();
+        match obj{
+            json  jsonObj=> {
+                addServer(jsonObj["ip"].toString());
+                http:Response res = new;
 
-        http:Response res = new;
+                json testJson = {"message":"Node Added","status":200};
 
-        res.setPayload("Hello, Node Added");
+                res.setJsonPayload(testJson);
 
-        caller->respond(res) but { error e => log:printError(
-                                                  "Error sending response", err = e) };
+                caller->respond(res) but { error e => log:printError(
+                                                          "Error sending response", err = e) };
+            }
+            error err => {io:println(err);}
+        }
     }
 
     @http:ResourceConfig {
@@ -46,9 +61,36 @@ service<http:Service> node bind { port: 7000 } {
     remove(endpoint caller, http:Request req) {
 
         http:Response res = new;
+        boolean isRemoved = removeServer("test");
+        if (isRemoved){
+            json testJson = {"message":"Node Removed","status":200};
 
-        res.setPayload("Hello, Node Removed");
+            res.setJsonPayload(testJson);
+            caller->respond(res) but { error e => log:printError(
+                                                      "Error sending response", err = e) };
+        }
+        else {
+            json testJson = {"message":"Node not found","status":500};
 
+            res.setJsonPayload(testJson);
+            caller->respond(res) but { error e => log:printError(
+                                                      "Error sending response", err = e) };
+        }
+
+
+
+    }
+    @http:ResourceConfig {
+        methods: ["GET"],
+        path: "/list"
+    }
+    list(endpoint caller, http:Request req) {
+        json jsonObj;
+        foreach k,v in nodeList {
+            jsonObj[k]=v;
+        }
+        http:Response res = new;
+        res.setJsonPayload(untaint jsonObj);
         caller->respond(res) but { error e => log:printError(
                                                   "Error sending response", err = e) };
     }

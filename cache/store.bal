@@ -2,10 +2,10 @@ import ballerina/http;
 import ballerina/log;
 
 
-map<CacheEntry> entries;
+//map<CacheEntry> entries;
 
 
-service<http:Service> data bind { port: 6969 } {
+service<http:Service> data bind { port:  6969 } {
 
     @http:ResourceConfig {
         methods: ["GET"],
