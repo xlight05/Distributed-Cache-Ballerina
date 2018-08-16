@@ -1,7 +1,10 @@
 import ballerina/time;
+import ballerina/io;
+import ballerina/http;
+import ballerina/log;
 
 endpoint http:Client clientEndpoint {
-    url: "http://localhost:9998/lb"
+    url: "http://localhost:9998"
 };
 
 type CacheEntry record {
@@ -34,21 +37,39 @@ public type Cache object {
         json j = check <json>entry;
 
         //select node
+        var response = clientEndpoint->post("/lb",untaint j);
+
+        match response {
+            http:Response resp => {
+                var msg = resp.getJsonPayload();
+                match msg {
+                    json jsonPayload => {
+                        io:println(jsonPayload);
+                    }
+                    error err => {
+                        log:printError(err.message, err = err);
+                    }
+                }
+            }
+            error err => {
+                log:printError(err.message, err = err);
+            }
+        }
         //send
 
     }
 
     public function get(string key) returns any? {
-        if (!hasKey(key)){
-            return  ();
-        }
-        map temp;
-        int currentTime = time:currentTime().time;
-        CacheEntry ent;
-        CacheEntry entry = entries[key] ?: ent;
-        entry.lastAccessedTime = currentTime;
-        //entries[key]= entry;
-        return entry.value;
+        //if (!hasKey(key)){
+        //    return  ();
+        //}
+        //map temp;
+        //int currentTime = time:currentTime().time;
+        //CacheEntry ent;
+        //CacheEntry entry = entries[key] ?: ent;
+        //entry.lastAccessedTime = currentTime;
+        ////entries[key]= entry;
+        //return entry.value;
     }
 
     public function size() returns int {

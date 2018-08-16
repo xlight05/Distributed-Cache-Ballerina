@@ -30,8 +30,14 @@ service<http:Service> data bind { port:  6969 } {
     store(endpoint caller, http:Request req) {
 
         http:Response res = new;
+        json|error obj = req.getJsonPayload();
+        json jsObj;
+        match obj{
+            json jsonObj=> {jsObj=jsonObj;}
+            error err => {io:println(err);}
+        }
 
-        res.setPayload("Hello, World! SEND Data");
+        res.setJsonPayload(jsObj);
 
         caller->respond(res) but { error e => log:printError(
                                                   "Error sending response", err = e) };
