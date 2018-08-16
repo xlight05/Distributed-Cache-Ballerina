@@ -9,9 +9,9 @@ service<http:Service> data bind { port:  6969 } {
 
     @http:ResourceConfig {
         methods: ["GET"],
-        path: "/recieve"
+        path: "/get"
     }
-    recieve(endpoint caller, http:Request req) {
+    get(endpoint caller, http:Request req) {
 
 
         http:Response res = new;
@@ -24,10 +24,10 @@ service<http:Service> data bind { port:  6969 } {
 
     @http:ResourceConfig {
         methods: ["POST"],
-        path: "/send"
+        path: "/store"
     }
 
-    send(endpoint caller, http:Request req) {
+    store(endpoint caller, http:Request req) {
 
         http:Response res = new;
 

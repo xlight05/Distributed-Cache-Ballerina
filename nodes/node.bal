@@ -7,6 +7,20 @@ type Node record {
 
 };
 
+endpoint http:LoadBalanceClient lbBackendEP {
+
+
+    targets: [
+        { url: "http://localhost:6969/data/store" },
+        { url: "http://localhost:6969/data/store" },
+        { url: "http://localhost:6969/data/store" }
+    ],
+
+    algorithm: http:ROUND_ROBIN,
+    timeoutMillis: 5000
+};
+
+
 string [] nodeList;
 
 function getNodeList() returns string[] {
@@ -94,6 +108,63 @@ service<http:Service> node bind { port: 7000 } {
         caller->respond(res) but { error e => log:printError(
                                                   "Error sending response", err = e) };
     }
+
+
 }
+//targets: [
+//{ url: "http://localhost:8080/mock1" },
+//{ url: "http://localhost:8080/mock2" },
+//{ url: "http://localhost:8080/mock3" }
+//]
+function getLBTargetList() returns json[] {
+    foreach v in nodeList {
+        json  x = {url:v};
+    }
+}
+
+@http:ServiceConfig {
+    basePath: "/lb"
+}
+
+service<http:Service> loadBalancerDemoService bind { port: 9998 } {
+
+    @http:ResourceConfig {
+        path: "/"
+    }
+
+    invokeEndpoint(endpoint caller, http:Request req) {
+
+
+        //http:LoadBalanceClientEndpointConfiguration cfg = {
+        //
+        //};
+        json|error obj = req.getJsonPayload();
+        json requestPayload;
+        match obj{
+            json  jsonObj=> {requestPayload=jsonObj;}
+            error err => {io:println(err);}
+        }
+        http:Request outRequest = new;
+        outRequest.setPayload(requestPayload);
+        var response = lbBackendEP->post("/", outRequest);
+
+        match response {
+            http:Response resp => {
+                caller->respond(resp) but {
+                    error e => log:printError("Error sending response", err = e)
+                };
+            }
+            error responseError => {
+                http:Response outResponse = new;
+                outResponse.statusCode = 500;
+                outResponse.setPayload(responseError.message);
+                caller->respond(outResponse) but {
+                    error e => log:printError("Error sending response", err = e)
+                };
+            }
+        }
+    }
+}
+
 
 

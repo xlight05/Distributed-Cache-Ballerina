@@ -1,5 +1,8 @@
 import ballerina/time;
 
+endpoint http:Client clientEndpoint {
+    url: "http://localhost:9998/lb"
+};
 
 type CacheEntry record {
     any value;
@@ -27,7 +30,11 @@ public type Cache object {
     public function put(string key, any value) {
         int currentTime = time:currentTime().time;
         CacheEntry entry = {value:value,lastAccessedTime:currentTime,timesAccessed:0,createdTime:currentTime};
-        entries[key]=entry;
+        //entries[key]=entry;
+        json j = check <json>entry;
+
+        //select node
+        //send
 
     }
 
