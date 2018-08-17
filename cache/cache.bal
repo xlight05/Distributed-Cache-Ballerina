@@ -3,9 +3,20 @@ import ballerina/io;
 import ballerina/http;
 import ballerina/log;
 
-endpoint http:Client clientEndpoint {
+
+endpoint http:Client lbEndpoint {
     url: "http://localhost:9998"
 };
+
+endpoint http:Client nodeEndpoint {
+    url: "http://localhost:7000"
+};
+
+endpoint http:Client storeEndpoint {
+    url: "http://localhost:6969"
+};
+
+
 
 type CacheEntry record {
     any value;
@@ -39,7 +50,7 @@ public type Cache object {
         
 
         //select node
-        var response = clientEndpoint->post("/lb",untaint j);
+        var response = lbEndpoint->post("/lb",untaint j);
 
         match response {
             http:Response resp => {
@@ -62,6 +73,65 @@ public type Cache object {
     }
 
     public function get(string key) returns any? {
+        var response = nodeEndpoint->get("/node/list");
+        json serverListJSON;
+        string [] serverList;
+        match response {
+            http:Response resp => {
+                var msg = resp.getJsonPayload();
+                match msg {
+                    json jsonPayload => {
+                        serverListJSON = jsonPayload;
+                    }
+                    error err => {
+                        log:printError(err.message, err = err);
+                    }
+                }
+            }
+            error err => {
+                log:printError(err.message, err = err);
+            }
+        }
+        int counter = 0;
+        foreach item in serverListJSON {
+            serverList[counter] = item.toString() + ":6969";
+            counter++;
+        }
+
+        json requestedJSON;
+
+        foreach item in serverList {
+            http:ClientEndpointConfig config = { url: item };
+            storeEndpoint.init(config);
+
+            var res = storeEndpoint->get("/data/get/"+key);
+             match res {
+                http:Response resp => {
+                var msg = resp.getJsonPayload();
+                match msg {
+                    json jsonPayload => {
+                        if (jsonPayload.value!=null){
+                            requestedJSON = jsonPayload;
+                            CacheEntry entry = check <CacheEntry> jsonPayload;
+                            return entry.value;
+                        }
+                    }
+                    error err => {
+                        log:printError(err.message, err = err);
+                    }
+                }
+            }
+            error err => {
+                log:printError(err.message, err = err);
+            }
+        }
+        return ();
+
+        }
+
+
+
+
         //if (!hasKey(key)){
         //    return  ();
         //}
@@ -72,7 +142,6 @@ public type Cache object {
         //entry.lastAccessedTime = currentTime;
         ////entries[key]= entry;
         //return entry.value;
-        return ();
     }
 
     public function size() returns int {

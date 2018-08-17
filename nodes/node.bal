@@ -21,7 +21,7 @@ endpoint http:LoadBalanceClient lbBackendEP {
 };
 
 
-string [] nodeList;
+public string [] nodeList;
 
 function getNodeList() returns string[] {
     return nodeList;

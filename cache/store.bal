@@ -8,6 +8,7 @@ map<CacheEntry> cacheEntries;
 service<http:Service> data bind { port:  6969 } {
 
     @http:ResourceConfig {
+
         methods: ["GET"],
         path: "/get/{key}"
     }
