@@ -3,7 +3,7 @@ import ballerina/http;
 import ballerina/log;
 
 type Node record {
-   string ip;
+    string ip;
 
 };
 
@@ -21,24 +21,24 @@ endpoint http:LoadBalanceClient lbBackendEP {
 };
 
 
-public string [] nodeList;
+public string[] nodeList;
 
 function getNodeList() returns string[] {
     return nodeList;
 }
 
-function addServer(string ip){
+function addServer(string ip) {
     nodeList[lengthof nodeList] = ip;
     io:println(string `{{ip}} Added`);
 
 }
 
-function removeServer(string ip) returns boolean{
+function removeServer(string ip) returns boolean {
     boolean found = false;
-    foreach k,v in nodeList{
-        if (v==ip){
-            v="";
-            found=true;
+    foreach k, v in nodeList{
+        if (v == ip){
+            v = "";
+            found = true;
         }
     }
     return found;
@@ -52,19 +52,24 @@ service<http:Service> node bind { port: 7000 } {
     }
     add(endpoint caller, http:Request req) {
         json|error obj = req.getJsonPayload();
-        match obj{
-            json  jsonObj=> {
+        match obj {
+            json jsonObj => {
                 addServer(jsonObj["ip"].toString());
                 http:Response res = new;
+                json jsonNodeList;
+                foreach k, v in nodeList {
+                    jsonNodeList[k] = v;
+                }
+                //json testJson = {"message":"Node Added","status":200};
 
-                json testJson = {"message":"Node Added","status":200};
-
-                res.setJsonPayload(testJson);
+                res.setJsonPayload(untaint jsonNodeList);
 
                 caller->respond(res) but { error e => log:printError(
                                                           "Error sending response", err = e) };
             }
-            error err => {io:println(err);}
+            error err => {
+                io:println(err);
+            }
         }
     }
 
@@ -77,14 +82,14 @@ service<http:Service> node bind { port: 7000 } {
         http:Response res = new;
         boolean isRemoved = removeServer("test");
         if (isRemoved){
-            json testJson = {"message":"Node Removed","status":200};
+            json testJson = { "message": "Node Removed", "status": 200 };
 
             res.setJsonPayload(testJson);
             caller->respond(res) but { error e => log:printError(
                                                       "Error sending response", err = e) };
         }
         else {
-            json testJson = {"message":"Node not found","status":500};
+            json testJson = { "message": "Node not found", "status": 500 };
 
             res.setJsonPayload(testJson);
             caller->respond(res) but { error e => log:printError(
@@ -100,11 +105,34 @@ service<http:Service> node bind { port: 7000 } {
     }
     list(endpoint caller, http:Request req) {
         json jsonObj;
-        foreach k,v in nodeList {
-            jsonObj[k]=v;
+        foreach k, v in nodeList {
+            jsonObj[k] = v;
         }
         http:Response res = new;
         res.setJsonPayload(untaint jsonObj);
+        caller->respond(res) but { error e => log:printError(
+                                                  "Error sending response", err = e) };
+    }
+
+    @http:ResourceConfig {
+        methods: ["POST"],
+        path: "/set"
+    }
+    setNodes(endpoint caller, http:Request req) {
+        json|error reqJson = req.getJsonPayload();
+        match reqJson {
+            json reqPayload => {
+                foreach item in reqPayload {
+                    nodeList[lengthof nodeList] = item.toString();
+                }
+            }
+            error err => {
+                io:println(err);
+            }
+        }
+        json testJson = { "message": "Nodes Added", "status": 200 };
+        http:Response res = new;
+        res.setJsonPayload(untaint testJson);
         caller->respond(res) but { error e => log:printError(
                                                   "Error sending response", err = e) };
     }
@@ -140,9 +168,13 @@ service<http:Service> loadBalancerDemoService bind { port: 9998 } {
         //};
         json|error obj = req.getJsonPayload();
         json requestPayload;
-        match obj{
-            json  jsonObj=> {requestPayload=jsonObj;}
-            error err => {io:println(err);}
+        match obj {
+            json jsonObj => {
+                requestPayload = jsonObj;
+            }
+            error err => {
+                io:println(err);
+            }
         }
         http:Request outRequest = new;
         outRequest.setPayload(untaint requestPayload);

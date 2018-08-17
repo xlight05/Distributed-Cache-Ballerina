@@ -43,14 +43,14 @@ public type Cache object {
 
     public function put(string key, any value) {
         int currentTime = time:currentTime().time;
-        CacheEntry entry = {value:value,lastAccessedTime:currentTime,timesAccessed:0,createdTime:currentTime};
+        CacheEntry entry = { value: value, lastAccessedTime: currentTime, timesAccessed: 0, createdTime: currentTime };
         //entries[key]=entry;
         json j = check <json>entry;
-        j["key"]= key;
-        
+        j["key"] = key;
+
 
         //select node
-        var response = lbEndpoint->post("/lb",untaint j);
+        var response = lbEndpoint->post("/lb", untaint j);
 
         match response {
             http:Response resp => {
@@ -75,7 +75,7 @@ public type Cache object {
     public function get(string key) returns any? {
         var response = nodeEndpoint->get("/node/list");
         json serverListJSON;
-        string [] serverList;
+        string[] serverList;
         match response {
             http:Response resp => {
                 var msg = resp.getJsonPayload();
@@ -104,28 +104,28 @@ public type Cache object {
             http:ClientEndpointConfig config = { url: item };
             storeEndpoint.init(config);
 
-            var res = storeEndpoint->get("/data/get/"+key);
-             match res {
+            var res = storeEndpoint->get("/data/get/" + key);
+            match res {
                 http:Response resp => {
-                var msg = resp.getJsonPayload();
-                match msg {
-                    json jsonPayload => {
-                        if (jsonPayload.value!=null){
-                            requestedJSON = jsonPayload;
-                            CacheEntry entry = check <CacheEntry> jsonPayload;
-                            return entry.value;
+                    var msg = resp.getJsonPayload();
+                    match msg {
+                        json jsonPayload => {
+                            if (jsonPayload.value != null){
+                                requestedJSON = jsonPayload;
+                                CacheEntry entry = check <CacheEntry>jsonPayload;
+                                return entry.value;
+                            }
+                        }
+                        error err => {
+                            log:printError(err.message, err = err);
                         }
                     }
-                    error err => {
-                        log:printError(err.message, err = err);
-                    }
+                }
+                error err => {
+                    log:printError(err.message, err = err);
                 }
             }
-            error err => {
-                log:printError(err.message, err = err);
-            }
-        }
-        return ();
+            return ();
 
         }
 
@@ -147,7 +147,7 @@ public type Cache object {
     public function size() returns int {
         return lengthof entries;
     }
-    public function hasKey (string key) returns boolean {
+    public function hasKey(string key) returns boolean {
         return entries.hasKey(key);
     }
 
