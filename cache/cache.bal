@@ -125,7 +125,7 @@ public type Cache object {
                     log:printError(err.message, err = err);
                 }
             }
-            return ();
+            return requestedJSON;
 
         }
 

@@ -1,8 +1,6 @@
 import ballerina/io;
 import ballerina/http;
 import ballerina/log;
-import nodes; //invoking services. need a better way
-import cache; //invoking services. need a better way
 import ballerina/runtime;
 import ballerina/math;
 
