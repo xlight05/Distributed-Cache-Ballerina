@@ -15,7 +15,9 @@ endpoint http:Client nodeEndpoint {
 endpoint http:Client storeEndpoint {
     url: "http://localhost:6969"
 };
-
+endpoint http:Client initEndpoint {
+    url: "http://localhost:9000"
+};
 
 
 type CacheEntry record {
@@ -29,14 +31,31 @@ type CacheEntry record {
 public type Cache object {
 
     private map<CacheEntry> entries;
-    private float evictionFactor;
 
-    public new(evictionFactor = 0.25) {
-
-        // Cache eviction factor must be between 0.0 (exclusive) and 1.0 (inclusive).
-        if (evictionFactor <= 0 || evictionFactor > 1) {
-            error e = { message: "Cache eviction factor must be between 0.0 (exclusive) and 1.0 (inclusive)." };
-            throw e;
+    public new(string currentIP,string ... nodeIPs) {
+        json initJSON;
+        initJSON["currentIP"]=currentIP;
+        initJSON["nodeArr"]=[];
+        foreach k,v in  nodeIPs{
+            initJSON["nodeArr"][k]=v;
+        }
+        io:println(initJSON);
+        var response = initEndpoint->put("/init/join",initJSON);
+        match response {
+            http:Response resp => {
+                var msg = resp.getJsonPayload();
+                match msg {
+                    json jsonPayload => {
+                        io:println(jsonPayload);
+                    }
+                    error err => {
+                        log:printError(err.message, err = err);
+                    }
+                }
+            }
+            error err => {
+                log:printError(err.message, err = err);
+            }
         }
 
     }
@@ -125,23 +144,8 @@ public type Cache object {
                     log:printError(err.message, err = err);
                 }
             }
-            return requestedJSON;
-
         }
-
-
-
-
-        //if (!hasKey(key)){
-        //    return  ();
-        //}
-        //map temp;
-        //int currentTime = time:currentTime().time;
-        //CacheEntry ent;
-        //CacheEntry entry = entries[key] ?: ent;
-        //entry.lastAccessedTime = currentTime;
-        ////entries[key]= entry;
-        //return entry.value;
+        return requestedJSON;
     }
 
     public function size() returns int {
