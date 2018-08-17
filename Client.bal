@@ -5,12 +5,12 @@ import ballerina/runtime;
 
 
 function main(string... args) {
-    cache:Cache cache = new("http://localhost");
+    cache:Cache cache = new("http://192.168.43.103");
 
     cache.put("Name", "Ballerina");
 
      string x = <string>cache.get("Name");
      io:println(x);
 
-    runtime:sleep(10000);
+    runtime:sleep(100000000);
 }
