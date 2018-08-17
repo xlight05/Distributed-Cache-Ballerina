@@ -20,6 +20,9 @@ endpoint http:LoadBalanceClient lbBackendEP {
     timeoutMillis: 5000
 };
 
+endpoint http:Client nodeEP {
+    url: "http://localhost:7000"
+};
 
 public string[] nodeList;
 
@@ -162,10 +165,37 @@ service<http:Service> loadBalancerDemoService bind { port: 9998 } {
 
     invokeEndpoint(endpoint caller, http:Request req) {
 
+        var ress = nodeEP->get("/node/list");
+        json serverListJSON;
+        match ress {
+            http:Response resps => {
+                var msg = resps.getJsonPayload();
+                match msg {
+                    json jsonPayload => {
+                        serverListJSON = jsonPayload;
+                    }
+                    error err => {
+                        log:printError(err.message, err = err);
+                    }
+                }
+            }
+            error err => {
+                log:printError(err.message, err = err);
+            }
+        }
+        http:TargetService[] tar;
+        int counter = 0;
+        foreach item in serverListJSON {
+            http:TargetService serv = { url: item.toString() + ":6969" };
+            tar[counter] = serv;
+            counter++;
+        }
 
-        //http:LoadBalanceClientEndpointConfiguration cfg = {
-        //
-        //};
+        http:LoadBalanceClientEndpointConfiguration cfg = {
+            targets: tar,
+            algorithm: http:ROUND_ROBIN,
+            timeoutMillis: 5000
+        };
         json|error obj = req.getJsonPayload();
         json requestPayload;
         match obj {
