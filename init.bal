@@ -47,7 +47,8 @@ service<http:Service> init bind { port: 9000 } {
 
         int i = 0;
         int nodeLength = lengthof nodeArr;
-        json serverList;
+        io:println(nodeLength);
+        json serverList={"0":currentIP};
         while (i < nodeLength) {
             http:ClientEndpointConfig config = { url: nodeArr[i].toString() + ":" + nodePort };
             clientEP.init(config);
@@ -74,9 +75,10 @@ service<http:Service> init bind { port: 9000 } {
             i = i + 1;
         }
 
-
+        io:println(currentIpWithPort);
         http:ClientEndpointConfig config = { url: currentIpWithPort };
         clientEP.init(config);
+        io:println(serverList);
         var response = clientEP->post("/node/set", untaint serverList);
 
         match response {
