@@ -31,18 +31,6 @@ service<http:Service> init bind { port: 9000 } {
         }
         string currentIpWithPort = currentIP + ":" + nodePort;
 
-
-        //io:println();
-        //http:Response res = new;
-        //
-        //res.setPayload("Hello, World!");
-        //
-        //caller->respond(res) but {
-        //    error e => log:printError(
-        //                   "Error sending response", err = e)
-        //};
-
-
         int i = 0;
         int nodeLength = lengthof nodeArr;
         io:println(nodeLength);
@@ -98,6 +86,5 @@ service<http:Service> init bind { port: 9000 } {
                 log:printError(err.message, err = err);
             }
         }
-        //  
     }
 }

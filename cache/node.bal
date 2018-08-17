@@ -139,19 +139,8 @@ service<http:Service> node bind { port: 7000 } {
         caller->respond(res) but { error e => log:printError(
                                                   "Error sending response", err = e) };
     }
-
-
 }
-//targets: [
-//{ url: "http://localhost:8080/mock1" },
-//{ url: "http://localhost:8080/mock2" },
-//{ url: "http://localhost:8080/mock3" }
-//]
-//function getLBTargetList() returns json[] {
-//    foreach v in nodeList {
-//        json  x = {url:v};
-//    }
-//}
+
 
 @http:ServiceConfig {
     basePath: "/lb"

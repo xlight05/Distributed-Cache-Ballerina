@@ -29,8 +29,7 @@ type CacheEntry record {
 
 
 public type Cache object {
-
-    private map<CacheEntry> entries;
+    
 
     public new(string currentIP,string ... nodeIPs) {
         json initJSON;
@@ -63,7 +62,6 @@ public type Cache object {
     public function put(string key, any value) {
         int currentTime = time:currentTime().time;
         CacheEntry entry = { value: value, lastAccessedTime: currentTime, timesAccessed: 0, createdTime: currentTime };
-        //entries[key]=entry;
         json j = check <json>entry;
         j["key"] = key;
 
@@ -148,11 +146,11 @@ public type Cache object {
         return requestedJSON;
     }
 
-    public function size() returns int {
-        return lengthof entries;
-    }
-    public function hasKey(string key) returns boolean {
-        return entries.hasKey(key);
-    }
+    // public function size() returns int {
+    //     return lengthof entries;
+    // }
+    // public function hasKey(string key) returns boolean {
+    //     return entries.hasKey(key);
+    // }
 
 };
