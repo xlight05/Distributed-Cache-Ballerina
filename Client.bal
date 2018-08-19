@@ -4,7 +4,7 @@ import ballerina/runtime;
 
 
 function main(string... args) {
-    cache:Cache cache = new ("http://localhost");
+    cache:Cache cache = new ("http://192.168.1.101");
 
     cache.put("Name", "Ballerina");
 

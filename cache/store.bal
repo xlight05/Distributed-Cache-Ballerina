@@ -47,4 +47,17 @@ service<http:Service> data bind { port: 6969 } {
                                                   "Error sending response", err = e) };
     }
 
+    //List all entries in the node
+    @http:ResourceConfig {
+    methods: ["GET"],
+    path: "/list"
+    }
+    list(endpoint caller, http:Request req) {
+        http:Response res = new;
+        json payload = check <json>cacheEntries;
+        res.setJsonPayload(untaint payload, contentType = "application/json");
+        caller->respond(res) but { error e => log:printError(
+                                                  "Error sending response", err = e) };
+    }
+
 }
