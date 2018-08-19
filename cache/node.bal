@@ -1,25 +1,21 @@
 import ballerina/io;
 import ballerina/http;
 import ballerina/log;
-
+//not used but might be useful later
 type Node record {
     string ip;
 
 };
 
+//Load Balancer endpoint that uses round robin data distribution
 endpoint http:LoadBalanceClient lbBackendEP {
-
-
     targets: [
-        { url: "http://localhost:6969/data/store" },
-        { url: "http://localhost:6969/data/store" },
         { url: "http://localhost:6969/data/store" }
     ],
-
     algorithm: http:ROUND_ROBIN,
     timeoutMillis: 5000
 };
-
+//Node endpoint
 endpoint http:Client nodeEP {
     url: "http://localhost:7000"
 };
@@ -33,7 +29,6 @@ function getNodeList() returns string[] {
 function addServer(string ip) {
     nodeList[lengthof nodeList] = ip;
     io:println(string `{{ip}} Added`);
-
 }
 
 function removeServer(string ip) returns boolean {
@@ -46,9 +41,9 @@ function removeServer(string ip) returns boolean {
     }
     return found;
 }
-
 service<http:Service> node bind { port: 7000 } {
 
+    // Allows you to add a node to the cluster
     @http:ResourceConfig {
         methods: ["POST"],
         path: "/add"
@@ -63,10 +58,7 @@ service<http:Service> node bind { port: 7000 } {
                 foreach k, v in nodeList {
                     jsonNodeList[k] = v;
                 }
-                //json testJson = {"message":"Node Added","status":200};
-
                 res.setJsonPayload(untaint jsonNodeList);
-
                 caller->respond(res) but { error e => log:printError(
                                                           "Error sending response", err = e) };
             }
@@ -76,6 +68,7 @@ service<http:Service> node bind { port: 7000 } {
         }
     }
 
+    //Allows you to remove a node from the cluster
     @http:ResourceConfig {
         methods: ["DELETE"],
         path: "/remove"
@@ -98,10 +91,9 @@ service<http:Service> node bind { port: 7000 } {
             caller->respond(res) but { error e => log:printError(
                                                       "Error sending response", err = e) };
         }
-
-
-
     }
+
+    //Allows you to list the nodes from the cluster
     @http:ResourceConfig {
         methods: ["GET"],
         path: "/list"
@@ -117,6 +109,7 @@ service<http:Service> node bind { port: 7000 } {
                                                   "Error sending response", err = e) };
     }
 
+    //Allows you to set multiple nodes for the cluster
     @http:ResourceConfig {
         methods: ["POST"],
         path: "/set"
@@ -141,19 +134,17 @@ service<http:Service> node bind { port: 7000 } {
     }
 }
 
-
+//Load Balancer is used to distribute data across the nodes in the cluster
 @http:ServiceConfig {
     basePath: "/lb"
 }
-
 service<http:Service> loadBalancerDemoService bind { port: 9998 } {
 
     @http:ResourceConfig {
         path: "/"
     }
-
     invokeEndpoint(endpoint caller, http:Request req) {
-
+        //Takes node list in case a node is added recently
         var ress = nodeEP->get("/node/list");
         json serverListJSON;
         match ress {
@@ -172,6 +163,8 @@ service<http:Service> loadBalancerDemoService bind { port: 9998 } {
                 log:printError(err.message, err = err);
             }
         }
+        //Load balancer targets should be updated in runtime. 
+        //Constructing target service with node list.
         http:TargetService[] tar;
         int counter = 0;
         foreach item in serverListJSON {
@@ -179,7 +172,7 @@ service<http:Service> loadBalancerDemoService bind { port: 9998 } {
             tar[counter] = serv;
             counter++;
         }
-
+        //Updating LoadBalacnerClientEndpointConfig
         http:LoadBalanceClientEndpointConfiguration cfg = {
             targets: tar,
             algorithm: http:ROUND_ROBIN,
@@ -198,7 +191,6 @@ service<http:Service> loadBalancerDemoService bind { port: 9998 } {
         http:Request outRequest = new;
         outRequest.setPayload(untaint requestPayload);
         var response = lbBackendEP->post("/", outRequest);
-
         match response {
             http:Response resp => {
                 caller->respond(resp) but {

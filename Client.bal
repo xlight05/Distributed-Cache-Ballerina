@@ -1,11 +1,10 @@
 import ballerina/io;
 import cache;
-import ballerina/system;
 import ballerina/runtime;
 
 
 function main(string... args) {
-    cache:Cache cache = new("http://192.168.43.103");
+    cache:Cache cache = new ("http://localhost");
 
     cache.put("Name", "Ballerina");
 
