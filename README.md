@@ -8,15 +8,12 @@
 
 ### Todos
 - Reduce Port usage and avoid port clashing.
-
 - Add code comments, handle edge cases, improve redabillity , refactor according to ballerina spec.
-
 - Implement consistant hashing.
 	Currently, 
 	Put method uses round robin mechanism with ballerina load balancer(lol).
 	get method checks all the nodes until you find the value for the given key.(lol)
 	Consitatnt hashing will drastically improve performane on both reads and writes also it will change data distribution among nodes,changes node add and remove process too.
-
 - Implement Raft algorithem.
 	Well,all distributed systems can fail at any given time. Raft is a consensus protocol that helps you to manage  nodes  even when there is a node failure. Implementating raft in to cache will drastiacally increase reliability of the distributed system.
 
