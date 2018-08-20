@@ -10,7 +10,7 @@ type Node record {
 //Load Balancer endpoint that uses round robin data distribution
 endpoint http:LoadBalanceClient lbBackendEP {
     targets: [
-        { url: "http://localhost:6969/data/store" }
+        { url: "http://localhost:6969" }
     ],
     algorithm: http:ROUND_ROBIN,
     timeoutMillis: 5000
@@ -19,6 +19,11 @@ endpoint http:LoadBalanceClient lbBackendEP {
 endpoint http:Client nodeEP {
     url: "http://localhost:7000"
 };
+
+endpoint http:Client lbEP {
+    url: "http://localhost:9998"
+};
+
 
 public string[] nodeList;
 
@@ -41,6 +46,7 @@ function removeServer(string ip) returns boolean {
     }
     return found;
 }
+
 service<http:Service> node bind { port: 7000 } {
 
     // Allows you to add a node to the cluster
@@ -53,6 +59,21 @@ service<http:Service> node bind { port: 7000 } {
         match obj {
             json jsonObj => {
                 addServer(jsonObj["ip"].toString());
+                //
+                http:TargetService[] tar;
+                foreach k,v in nodeList {
+                    http:TargetService serv = { url: v + ":6969" };
+                    tar[k] = serv;
+                }
+                io:println(tar);
+                //Updating LoadBalacnerClientEndpointConfig
+                http:LoadBalanceClientEndpointConfiguration cfg = {
+                    targets: tar,
+                    algorithm: http:ROUND_ROBIN,
+                    timeoutMillis: 5000
+                };
+                lbBackendEP.init(cfg);
+                //
                 http:Response res = new;
                 json jsonNodeList;
                 foreach k, v in nodeList {
@@ -144,41 +165,43 @@ service<http:Service> loadBalancerDemoService bind { port: 9998 } {
         path: "/"
     }
     invokeEndpoint(endpoint caller, http:Request req) {
-        //Takes node list in case a node is added recently
-        var ress = nodeEP->get("/node/list");
-        json serverListJSON;
-        match ress {
-            http:Response resps => {
-                var msg = resps.getJsonPayload();
-                match msg {
-                    json jsonPayload => {
-                        serverListJSON = jsonPayload;
-                    }
-                    error err => {
-                        log:printError(err.message, err = err);
-                    }
-                }
-            }
-            error err => {
-                log:printError(err.message, err = err);
-            }
-        }
-        //Load balancer targets should be updated in runtime. 
-        //Constructing target service with node list.
-        http:TargetService[] tar;
-        int counter = 0;
-        foreach item in serverListJSON {
-            http:TargetService serv = { url: item.toString() + ":6969" };
-            tar[counter] = serv;
-            counter++;
-        }
-        //Updating LoadBalacnerClientEndpointConfig
-        http:LoadBalanceClientEndpointConfiguration cfg = {
-            targets: tar,
-            algorithm: http:ROUND_ROBIN,
-            timeoutMillis: 5000
-        };
-        lbBackendEP.init(cfg);
+        // //Takes node list in case a node is added recently
+        // var ress = nodeEP->get("/node/list");
+        // json serverListJSON;
+        // match ress {
+        //     http:Response resps => {
+        //         var msg = resps.getJsonPayload();
+        //         match msg {
+        //             json jsonPayload => {
+        //                 serverListJSON = jsonPayload;
+        //             }
+        //             error err => {
+        //                 log:printError(err.message, err = err);
+        //             }
+        //         }
+        //     }
+        //     error err => {
+        //         log:printError(err.message, err = err);
+        //     }
+        // }
+        // //Load balancer targets should be updated in runtime. 
+        // //Constructing target service with node list.
+        // http:TargetService[] tar;
+        // int counter = 0;
+        // foreach item in serverListJSON {
+        //     http:TargetService serv = { url: item.toString() + ":6969" };
+        //     tar[counter] = serv;
+        //     counter++;
+        // }
+        // io:println(tar);
+        // //Updating LoadBalacnerClientEndpointConfig
+        // http:LoadBalanceClientEndpointConfiguration cfg = {
+        //     targets: tar,
+        //     algorithm: http:ROUND_ROBIN,
+        //     timeoutMillis: 5000
+        // };
+        // io:println(serverListJSON);
+        // lbBackendEP.init(cfg);
         json|error obj = req.getJsonPayload();
         json requestPayload;
         match obj {
