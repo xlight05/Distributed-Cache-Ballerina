@@ -178,6 +178,7 @@ service<http:Service> loadBalancerDemoService bind { port: 9998 } {
             algorithm: http:ROUND_ROBIN,
             timeoutMillis: 5000
         };
+        lbBackendEP.init(cfg);
         json|error obj = req.getJsonPayload();
         json requestPayload;
         match obj {
@@ -190,7 +191,7 @@ service<http:Service> loadBalancerDemoService bind { port: 9998 } {
         }
         http:Request outRequest = new;
         outRequest.setPayload(untaint requestPayload);
-        var response = lbBackendEP->post("/", outRequest);
+        var response = lbBackendEP->post("/data/store", outRequest);
         match response {
             http:Response resp => {
                 caller->respond(resp) but {
