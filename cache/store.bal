@@ -49,8 +49,8 @@ service<http:Service> data bind { port: 6969 } {
 
     //List all entries in the node
     @http:ResourceConfig {
-    methods: ["GET"],
-    path: "/list"
+        methods: ["GET"],
+        path: "/list"
     }
     list(endpoint caller, http:Request req) {
         http:Response res = new;

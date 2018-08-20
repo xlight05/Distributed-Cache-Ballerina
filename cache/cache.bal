@@ -26,19 +26,20 @@ type CacheEntry record {
 
 
 public type Cache object {
-    
+
     //To construct an Cache object you need two parameters. First one is your current IP in the node. 
     //Second one is a Rest parameter. you have to send ips of existing nodes in your cluster as string to this parameter.
     //In simple terms, current node sends broadcast to all the existing nodes so they can add the new node to their cluster node list.
     //then it takes the complete node list as the response and store it locally for further use.
-    public new(string currentIP,string ... nodeIPs) {
-        string nodePort = "7000"; //static ports (for now)
+    public new(string currentIP, string... nodeIPs) {
+        string nodePort = "7000";
+        //static ports (for now)
         string currentIpWithPort = currentIP + ":" + nodePort;
         int i = 0;
         int nodeLength = lengthof nodeIPs;
         io:println(nodeLength);
         //server list json init
-        json serverList={"0":currentIP};
+        json serverList = { "0": currentIP };
         //sending requests for existing nodes
         while (i < nodeLength) {
             //changing the url of client endpoint 
@@ -78,7 +79,7 @@ public type Cache object {
                 var msg = resp.getJsonPayload();
                 match msg {
                     json jsonPayload => {
-                        io:println (jsonPayload);
+                        io:println(jsonPayload);
                     }
                     error err => {
                         log:printError(err.message, err = err);

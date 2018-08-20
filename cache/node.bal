@@ -47,21 +47,21 @@ function removeServer(string ip) returns boolean {
     return found;
 }
 
-function updateLoadBalancerConfig () {
-                //Populating Target Service
-                http:TargetService[] tar;
-                foreach k,v in nodeList {
-                    http:TargetService serv = { url: v + ":6969" };
-                    tar[k] = serv;
-                }
-                io:println(tar);
-                //Updating LoadBalacnerClientEndpointConfig
-                http:LoadBalanceClientEndpointConfiguration cfg = {
-                    targets: tar,
-                    algorithm: http:ROUND_ROBIN,
-                    timeoutMillis: 5000
-                };
-                lbBackendEP.init(cfg);
+function updateLoadBalancerConfig() {
+    //Populating Target Service
+    http:TargetService[] tar;
+    foreach k, v in nodeList {
+        http:TargetService serv = { url: v + ":6969" };
+        tar[k] = serv;
+    }
+    io:println(tar);
+    //Updating LoadBalacnerClientEndpointConfig
+    http:LoadBalanceClientEndpointConfiguration cfg = {
+        targets: tar,
+        algorithm: http:ROUND_ROBIN,
+        timeoutMillis: 5000
+    };
+    lbBackendEP.init(cfg);
 }
 
 service<http:Service> node bind { port: 7000 } {
