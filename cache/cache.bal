@@ -2,20 +2,19 @@ import ballerina/time;
 import ballerina/io;
 import ballerina/http;
 import ballerina/log;
-
-
-endpoint http:Client lbEndpoint {
-    url: "http://localhost:9998"
-};
+import ballerina/config;
 
 endpoint http:Client nodeEndpoint {
-    url: "http://localhost:7000"
+    url: "http://localhost:" + config:getAsString("port", default = "7000")
 };
-
-endpoint http:Client storeEndpoint {
-    url: "http://localhost:6969"
+endpoint http:Listener listner {
+    port: config:getAsInt("port", default = 7000)
 };
-
+type Node record {
+    string id;
+    string ip;
+    string port;
+};
 
 type CacheEntry record {
     any value;
@@ -24,62 +23,40 @@ type CacheEntry record {
     int createdTime;
 };
 
+map<Cache> cacheMap;
+string currentIP = config:getAsString("ip", default = "http://192.168.1.100");
+int currentPort = config:getAsInt("port", default = 7000);
 
-public type Cache object {
 
-    //To construct an Cache object you need two parameters. First one is your current IP in the node. 
-    //Second one is a Rest parameter. you have to send ips of existing nodes in your cluster as string to this parameter.
-    //In simple terms, current node sends broadcast to all the existing nodes so they can add the new node to their cluster node list.
-    //then it takes the complete node list as the response and store it locally for further use.
-    public new(string currentIP, string... nodeIPs) {
-        string nodePort = "7000";
-        //static ports (for now)
-        string currentIpWithPort = currentIP + ":" + nodePort;
-        int i = 0;
-        int nodeLength = lengthof nodeIPs;
-        io:println(nodeLength);
-        //server list json init
-        json serverList = { "0": currentIP };
-        //sending requests for existing nodes
-        while (i < nodeLength) {
-            //changing the url of client endpoint 
-            http:ClientEndpointConfig config = { url: nodeIPs[i] + ":" + nodePort };
-            nodeEndpoint.init(config);
+public function createCluster() {
+    string nodeIP = currentIP + ":" + currentPort;
+    json j = addServer(nodeIP);
+}
 
-            json serverDetailsJSON = { "ip": currentIP };
-            var response = nodeEndpoint->post("/node/add", untaint serverDetailsJSON);
 
-            match response {
-                http:Response resp => {
-                    var msg = resp.getJsonPayload();
-                    match msg {
-                        json jsonPayload => {
-                            serverList = jsonPayload;
-                        }
-                        error err => {
-                            log:printError(err.message, err = err);
-                        }
-                    }
-                }
-                error err => {
-                    log:printError(err.message, err = err);
-                }
-            }
-            i = i + 1;
-        }
+public function joinCluster(string... nodeIPs) {
 
-        //changing client endpoint url to current IP
-        http:ClientEndpointConfig config = { url: currentIpWithPort };
+    string currentIpWithPort = currentIP + ":" + currentPort;
+    int i = 0;
+    int nodeLength = lengthof nodeIPs;
+    io:println(nodeLength);
+    //server list json init
+    json serverList = { "0": currentIpWithPort };
+    //sending requests for existing nodes
+    while (i < nodeLength) {
+        //changing the url of client endpoint
+        http:ClientEndpointConfig config = { url: nodeIPs[i] };
         nodeEndpoint.init(config);
-        io:println(serverList);
-        //settting current node with server list.
-        var response = nodeEndpoint->post("/node/set", untaint serverList);
+
+        json serverDetailsJSON = { "ip": currentIpWithPort };
+        var response = nodeEndpoint->post("/node/add", untaint serverDetailsJSON);
+
         match response {
             http:Response resp => {
                 var msg = resp.getJsonPayload();
                 match msg {
                     json jsonPayload => {
-                        io:println(jsonPayload);
+                        serverList = jsonPayload;
                     }
                     error err => {
                         log:printError(err.message, err = err);
@@ -90,6 +67,66 @@ public type Cache object {
                 log:printError(err.message, err = err);
             }
         }
+        i = i + 1;
+    }
+    //Setting local node list
+    nodeList = nodeIPs;
+    nodeList[lengthof nodeList] = currentIpWithPort;
+    updateLoadBalancerConfig();
+
+}
+
+public function createCache(string name) {
+    cacheMap[name] = new Cache(name);
+}
+
+public function getCache(string name) returns Cache? {
+
+    int nodeLength = lengthof nodeList;
+    int i = 0;
+    while (i < nodeLength) {
+        //changing the url of client endpoint
+        http:ClientEndpointConfig cfg = { url: nodeList[i] };
+        nodeEndpoint.init(cfg);
+        var response = nodeEndpoint->get("/cache/get/"+name);
+
+        match response {
+            http:Response resp => {
+                var msg = resp.getJsonPayload();
+                match msg {
+                    json jsonPayload => {
+                        if (!(jsonPayload["status"].toString()=="Not found")){
+                            Cache  x= check <Cache>jsonPayload;
+                            cacheMap[name]=x;
+                            return x;
+                        }
+
+                    }
+                    error err => {
+                        log:printError(err.message, err = err);
+                    }
+                }
+            }
+            error err => {
+                log:printError(err.message, err = err);
+            }
+        }
+        i = i + 1;
+    }
+
+    return ();
+}
+
+
+
+public type Cache object {
+    string name;
+    //To construct an Cache object you need two parameters. First one is your current IP in the node. 
+    //Second one is a Rest parameter. you have to send ips of existing nodes in your cluster as string to this parameter.
+    //In simple terms, current node sends broadcast to all the existing nodes so they can add the new node to their cluster node list.
+    //then it takes the complete node list as the response and store it locally for further use.
+    public new(name) {
+
     }
 
     //Put function allows users to store key and value in the cache.
@@ -102,7 +139,9 @@ public type Cache object {
         j["key"] = key;
 
         //sends data to load balacner.
-        var response = lbEndpoint->post("/lb", untaint j);
+        http:ClientEndpointConfig config = { url: "http://localhost:" + config:getAsString("port", default = "7000") };
+        nodeEndpoint.init(config);
+        var response = nodeEndpoint->post("/lb", untaint j);
         match response {
             http:Response resp => {
                 var msg = resp.getJsonPayload();
@@ -125,40 +164,14 @@ public type Cache object {
     //Get function allows you to retrieve data from the stores of all the nodes.
     //In this current version it checks each node if it has the given key or not (which is not very effecient.)
     public function get(string key) returns any? {
-        var response = nodeEndpoint->get("/node/list");
-        json serverListJSON;
-        string[] serverList;
-        //getting serverlist
-        match response {
-            http:Response resp => {
-                var msg = resp.getJsonPayload();
-                match msg {
-                    json jsonPayload => {
-                        serverListJSON = jsonPayload;
-                    }
-                    error err => {
-                        log:printError(err.message, err = err);
-                    }
-                }
-            }
-            error err => {
-                log:printError(err.message, err = err);
-            }
-        }
-        //poulating server list with store port.
-        int counter = 0;
-        foreach item in serverListJSON {
-            serverList[counter] = item.toString() + ":6969";
-            counter++;
-        }
-
+        string[] serverList = nodeList;
         json requestedJSON;
         //checking all nodes and return the value of the entry if found.
         foreach item in serverList {
             http:ClientEndpointConfig config = { url: item };
-            storeEndpoint.init(config);
+            nodeEndpoint.init(config);
 
-            var res = storeEndpoint->get("/data/get/" + key);
+            var res = nodeEndpoint->get("/data/get/" + key);
             match res {
                 http:Response resp => {
                     var msg = resp.getJsonPayload();
@@ -191,3 +204,6 @@ public type Cache object {
     // }
 
 };
+
+
+

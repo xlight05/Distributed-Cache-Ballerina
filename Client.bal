@@ -1,14 +1,28 @@
 import ballerina/io;
 import cache;
 import ballerina/runtime;
+import ballerina/log;
 
 
 function main(string... args) {
-    cache:Cache cache = new("http://localhost");
+    cache:joinCluster("http://localhost:4000");
+    cache:createCache("oauthCache");
+    var cacheVar = cache:getCache("oauthCache");
+    cache:Cache oauthCache = new ("local");
+    
+    match cacheVar {
+        cache:Cache cache=> {
+            oauthCache = cache;
+        }
+        () err=> {
+             log:printError("Error sending response", err = err);
+        }
+    }
 
-    cache.put("Name", "Ballerina");
 
-    string x = <string>cache.get("Name");
+    oauthCache.put("Name", "Ballerina");
+
+    string x = <string>oauthCache.get("Name");
     io:println(x);
 
     runtime:sleep(100000000);
