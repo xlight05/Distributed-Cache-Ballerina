@@ -13,7 +13,6 @@ endpoint http:Listener listner {
 type Node record {
     string id;
     string ip;
-    string port;
 };
 
 type CacheEntry record {
@@ -24,31 +23,33 @@ type CacheEntry record {
 };
 
 map<Cache> cacheMap;
-string currentIP = config:getAsString("ip", default = "http://192.168.1.100");
+string currentIP = config:getAsString("ip", default = "http://localhost");
 int currentPort = config:getAsInt("port", default = 7000);
-
+Node currentNode = {
+    id:config:getAsString("id", default = "1"),
+    ip:config:getAsString("ip", default = "http://localhost")+":"+config:getAsInt("port", default = 7000)
+};
 
 public function createCluster() {
-    string nodeIP = currentIP + ":" + currentPort;
-    json j = addServer(nodeIP);
+    json j = addServer(currentNode);
 }
 
 
 public function joinCluster(string... nodeIPs) {
 
-    string currentIpWithPort = currentIP + ":" + currentPort;
+    string currentIpWithPort = currentNode.ip;
     int i = 0;
     int nodeLength = lengthof nodeIPs;
     io:println(nodeLength);
     //server list json init
-    json serverList = { "0": currentIpWithPort };
+    json serverList = { "0": check <json> currentNode };
     //sending requests for existing nodes
     while (i < nodeLength) {
         //changing the url of client endpoint
         http:ClientEndpointConfig config = { url: nodeIPs[i] };
         nodeEndpoint.init(config);
 
-        json serverDetailsJSON = { "ip": currentIpWithPort };
+        json serverDetailsJSON = check <json> currentNode;
         var response = nodeEndpoint->post("/node/add", untaint serverDetailsJSON);
 
         match response {
@@ -70,8 +71,8 @@ public function joinCluster(string... nodeIPs) {
         i = i + 1;
     }
     //Setting local node list
-    nodeList = nodeIPs;
-    nodeList[lengthof nodeList] = currentIpWithPort;
+    nodeList = untaint check <Node[]> serverList;
+    nodeList[lengthof nodeList] = currentNode;
     updateLoadBalancerConfig();
 
 }
@@ -86,7 +87,7 @@ public function getCache(string name) returns Cache? {
     int i = 0;
     while (i < nodeLength) {
         //changing the url of client endpoint
-        http:ClientEndpointConfig cfg = { url: nodeList[i] };
+        http:ClientEndpointConfig cfg = { url: nodeList[i].ip };
         nodeEndpoint.init(cfg);
         var response = nodeEndpoint->get("/cache/get/"+name);
 
@@ -164,11 +165,11 @@ public type Cache object {
     //Get function allows you to retrieve data from the stores of all the nodes.
     //In this current version it checks each node if it has the given key or not (which is not very effecient.)
     public function get(string key) returns any? {
-        string[] serverList = nodeList;
+        Node[] serverList = nodeList;
         json requestedJSON;
         //checking all nodes and return the value of the entry if found.
         foreach item in serverList {
-            http:ClientEndpointConfig config = { url: item };
+            http:ClientEndpointConfig config = { url: item.ip };
             nodeEndpoint.init(config);
 
             var res = nodeEndpoint->get("/data/get/" + key);

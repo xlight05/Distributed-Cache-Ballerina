@@ -12,32 +12,29 @@ endpoint http:LoadBalanceClient lbBackendEP {
     timeoutMillis: 5000
 };
 
-public string[] nodeList;
+public Node [] nodeList;
 
 function getNodeList() returns json {
-    json jsonObj;
-    foreach k, v in nodeList {
-        jsonObj[k] = v;
-    }
+    json jsonObj = check <json> nodeList;
+    //foreach k, v in nodeList {
+    //    jsonObj[k] = check v;
+    //}
     return jsonObj;
 }
 
-function addServer(string ip) returns json{
-    nodeList[lengthof nodeList] = ip;
+function addServer(Node node) returns json{
+    nodeList[lengthof nodeList] = node;
     updateLoadBalancerConfig();
-    json jsonNodeList;
-    foreach k, v in nodeList {
-        jsonNodeList[k] = v;
-    }
-    io:println(string `{{ip}} Added`);
+    json jsonNodeList = check <json>nodeList; // might casue prob
+    io:println(jsonNodeList);
     return jsonNodeList;
 }
 
 function removeServer(string ip) returns boolean {
     boolean found = false;
     foreach k, v in nodeList{
-        if (v == ip){
-            v = "";
+        if (v.ip == ip){
+            //v = ();
             found = true;
         }
     }
@@ -48,7 +45,7 @@ function updateLoadBalancerConfig() {
     //Populating Target Service
     http:TargetService[] tar;
     foreach k, v in nodeList {
-        http:TargetService serv = { url: v};
+        http:TargetService serv = { url: v.ip};
         tar[k] = serv;
     }
     io:println(tar);

@@ -17,7 +17,8 @@ service<http:Service> api bind listner {
         json|error obj = req.getJsonPayload();
         match obj {
             json jsonObj => {
-                json jsonNodeList = addServer(jsonObj["ip"].toString());
+                Node node = check <Node> jsonObj;
+                json jsonNodeList = addServer(node);
                 http:Response res = new;
                 res.setJsonPayload(untaint jsonNodeList);
                 caller->respond(res) but { error e => log:printError(
@@ -77,7 +78,7 @@ service<http:Service> api bind listner {
         match reqJson {
             json reqPayload => {
                 foreach item in reqPayload {
-                    nodeList[lengthof nodeList] = item.toString();
+                    nodeList[lengthof nodeList] = check <Node> item;
                     updateLoadBalancerConfig();
                 }
             }

@@ -5,11 +5,12 @@ import ballerina/log;
 
 
 function main(string... args) {
-    cache:joinCluster("http://localhost:4000");
+
+    cache:createCluster();
     cache:createCache("oauthCache");
     var cacheVar = cache:getCache("oauthCache");
     cache:Cache oauthCache = new ("local");
-    
+
     match cacheVar {
         cache:Cache cache=> {
             oauthCache = cache;
