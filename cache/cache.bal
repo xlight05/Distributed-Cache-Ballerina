@@ -3,6 +3,7 @@ import ballerina/io;
 import ballerina/http;
 import ballerina/log;
 import ballerina/config;
+import ballerina/cache as localCache;
 
 endpoint http:Client nodeEndpoint {
     url: "http://localhost:" + config:getAsString("port", default = "7000")
@@ -122,6 +123,8 @@ public function getCache(string name) returns Cache? {
 
 public type Cache object {
     string name;
+    localCache:Cache nearCache = new(capacity = 100, expiryTimeMillis = 24*60000, evictionFactor = 0.2);
+
     //To construct an Cache object you need two parameters. First one is your current IP in the node. 
     //Second one is a Rest parameter. you have to send ips of existing nodes in your cluster as string to this parameter.
     //In simple terms, current node sends broadcast to all the existing nodes so they can add the new node to their cluster node list.
@@ -134,6 +137,9 @@ public type Cache object {
     //In the current version put function, it sends key and value for loadbalacner located in node.bal to achieve round robin 
     //data distribute pattern
     public function put(string key, any value) {
+        //Adding in to nearCache for quick retrival
+
+        nearCache.put (key,value);
         int currentTime = time:currentTime().time;
         CacheEntry entry = { value: value, lastAccessedTime: currentTime, timesAccessed: 0, createdTime: currentTime };
         json j = check <json>entry;
@@ -165,6 +171,11 @@ public type Cache object {
     //Get function allows you to retrieve data from the stores of all the nodes.
     //In this current version it checks each node if it has the given key or not (which is not very effecient.)
     public function get(string key) returns any? {
+        //check near cache if key exists locally.
+        if(nearCache.hasKey(key)){
+            return nearCache.get(key);
+        }
+        //else search in the cluster
         Node[] serverList = nodeList;
         json requestedJSON;
         //checking all nodes and return the value of the entry if found.
