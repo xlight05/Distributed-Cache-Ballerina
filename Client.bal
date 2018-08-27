@@ -20,11 +20,9 @@ function main(string... args) {
         }
     }
 
-
     oauthCache.put("Name", "Ballerina");
-
+    
     string x = <string>oauthCache.get("Name");
     io:println(x);
-
     runtime:sleep(100000000);
 }

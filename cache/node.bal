@@ -31,7 +31,36 @@ function addServer(Node node) returns json{
     c.add(node.ip);
     // updateLoadBalancerConfig();
     json jsonNodeList = check <json>nodeList; // might casue prob
+    io:println ("New Node Added - new Node List");
     io:println(jsonNodeList);
+    json changedJson = getChangedEntries();
+    foreach nodeItem in nodeList {
+        if (nodeItem.ip==currentNode.ip){
+            continue;
+        }
+        
+            http:ClientEndpointConfig config = { url: nodeItem.ip };
+            nodeEndpoint.init(config);
+
+            var res = nodeEndpoint->post("/data/multiple/store/" ,untaint changedJson[nodeItem.ip]);
+            io:println (changedJson[nodeItem.ip]);
+            match res {
+                http:Response resp => {
+                    var msg = resp.getJsonPayload();
+                    match msg {
+                        json jsonPayload => {
+                            io:println (jsonPayload);
+                        }
+                        error err => {
+                            log:printError(err.message, err = err);
+                        }
+                    }
+                }
+                error err => {
+                    log:printError(err.message, err = err);
+                }
+            }
+    }
     return jsonNodeList;
 }
 
@@ -51,6 +80,7 @@ function setServers (){
          c.add(item.ip);
     }
 }
+
 
 function updateLoadBalancerConfig() {
     //Populating Target Service

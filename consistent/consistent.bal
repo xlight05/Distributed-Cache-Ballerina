@@ -15,6 +15,7 @@ public type ConsistentHash object {
     }
 
     public function add(string nodeName) {
+        io:println("Called");
         int i=0;
         while (i<numberOfReplicas){
             string nodeReplicaHash = <string>getCrc32HashDecimal(i+nodeName);

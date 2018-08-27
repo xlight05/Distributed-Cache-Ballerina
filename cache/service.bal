@@ -131,6 +131,28 @@ service<http:Service> api bind listner {
                                                   "Error sending response", err = e) };
     }
 
+        //Allows users to store data in the node.
+    @http:ResourceConfig {
+        methods: ["POST"],
+        path: "/data/multiple/store"
+    }
+    multipleStore(endpoint caller, http:Request req) {
+        http:Response res = new;
+        json|error obj = req.getJsonPayload();
+        json testJson = { "message": "Entries Added", "status": 200 };
+        match obj {
+            json jsonObj => {
+                storeMultipleEntries(jsonObj);
+            }
+            error err => {
+                io:println(err);
+            }
+        }
+        res.setJsonPayload(untaint testJson );
+        caller->respond(res) but { error e => log:printError(
+                                                  "Error sending response", err = e) };
+    }
+
     //List all entries in the node
     @http:ResourceConfig {
         methods: ["GET"],

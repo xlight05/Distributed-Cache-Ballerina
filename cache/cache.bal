@@ -73,9 +73,12 @@ public function joinCluster(string... nodeIPs) {
     }
     //Setting local node list
     nodeList = untaint check <Node[]> serverList;
-    nodeList[lengthof nodeList] = currentNode;
+    //nodeList[lengthof nodeList] = currentNode;
     setServers();
     //updateLoadBalancerConfig();
+    io:println ("Joined the cluster- Node List");
+    io:println (nodeList);
+    io:println(c.sortedHashes);
 
 }
 
