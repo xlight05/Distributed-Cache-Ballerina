@@ -2,6 +2,8 @@ import ballerina/io;
 import ballerina/http;
 import ballerina/log;
 import ballerina/config;
+import consistent;
+
 
 //Load Balancer endpoint that uses round robin data distribution
 endpoint http:LoadBalanceClient lbBackendEP {
@@ -11,6 +13,7 @@ endpoint http:LoadBalanceClient lbBackendEP {
     algorithm: http:ROUND_ROBIN,
     timeoutMillis: 5000
 };
+consistent:ConsistentHash c = new();
 
 public Node [] nodeList;
 
@@ -23,8 +26,10 @@ function getNodeList() returns json {
 }
 
 function addServer(Node node) returns json{
+
     nodeList[lengthof nodeList] = node;
-    updateLoadBalancerConfig();
+    c.add(node.ip);
+    // updateLoadBalancerConfig();
     json jsonNodeList = check <json>nodeList; // might casue prob
     io:println(jsonNodeList);
     return jsonNodeList;
@@ -39,6 +44,12 @@ function removeServer(string ip) returns boolean {
         }
     }
     return found;
+}
+
+function setServers (){
+    foreach item in nodeList {
+         c.add(item.ip);
+    }
 }
 
 function updateLoadBalancerConfig() {
