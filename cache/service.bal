@@ -17,15 +17,16 @@ service<http:Service> api bind listner {
         json|error obj = req.getJsonPayload();
         match obj {
             json jsonObj => {
-                Node node = check <Node> jsonObj;
+                Node node = check <Node>jsonObj;
                 json jsonNodeList = addServer(node);
+                //TODO if Node exists
                 http:Response res = new;
                 res.setJsonPayload(untaint jsonNodeList);
                 caller->respond(res) but { error e => log:printError(
                                                           "Error sending response", err = e) };
             }
             error err => {
-                io:println(err);
+                log:printError("Error recieving response", err = err);
             }
         }
     }
@@ -68,33 +69,9 @@ service<http:Service> api bind listner {
                                                   "Error sending response", err = e) };
     }
 
-    //Allows you to set multiple nodes for the cluster
-    @http:ResourceConfig {
-        methods: ["POST"],
-        path: "/node/set"
-    }
-    setNodes(endpoint caller, http:Request req) {
-        json|error reqJson = req.getJsonPayload();
-        match reqJson {
-            json reqPayload => {
-                foreach item in reqPayload {
-                    nodeList[lengthof nodeList] = check <Node> item;
-                    updateLoadBalancerConfig();
-                }
-            }
-            error err => {
-                io:println(err);
-            }
-        }
-        json testJson = { "message": "Nodes Added", "status": 200 };
-        http:Response res = new;
-        res.setJsonPayload(untaint testJson);
-        caller->respond(res) but { error e => log:printError(
-                                                  "Error sending response", err = e) };
-    }
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     //Allows users to retrive data from a given key
     @http:ResourceConfig {
@@ -123,7 +100,7 @@ service<http:Service> api bind listner {
                 jsObj = setCacheEntry(jsonObj);
             }
             error err => {
-                io:println(err);
+                log:printError("Error recieving response", err = err);
             }
         }
         res.setJsonPayload(untaint jsObj);
@@ -131,7 +108,7 @@ service<http:Service> api bind listner {
                                                   "Error sending response", err = e) };
     }
 
-        //Allows users to store data in the node.
+    //Allows users to store data in the node.
     @http:ResourceConfig {
         methods: ["POST"],
         path: "/data/multiple/store"
@@ -145,10 +122,10 @@ service<http:Service> api bind listner {
                 storeMultipleEntries(jsonObj);
             }
             error err => {
-                io:println(err);
+                log:printError("Error recieving response", err = err);
             }
         }
-        res.setJsonPayload(untaint testJson );
+        res.setJsonPayload(untaint testJson);
         caller->respond(res) but { error e => log:printError(
                                                   "Error sending response", err = e) };
     }
@@ -166,7 +143,7 @@ service<http:Service> api bind listner {
                                                   "Error sending response", err = e) };
     }
 
-        //Allows users to store data in the node.
+    //Allows users to store data in the node.
     @http:ResourceConfig {
         methods: ["POST"],
         path: "/cache/add"
@@ -177,10 +154,10 @@ service<http:Service> api bind listner {
         json testJson = { "message": "Nodes Added", "status": 200 };
         match obj {
             json jsonObj => {
-                cacheMap = check <map<Cache>> untaint jsonObj;
+                cacheMap = check <map<Cache>>untaint jsonObj;
             }
             error err => {
-                io:println(err);
+                log:printError("Error recieving response", err = err);
             }
         }
         res.setJsonPayload(untaint testJson);
@@ -188,18 +165,19 @@ service<http:Service> api bind listner {
                                                   "Error sending response", err = e) };
     }
 
+    //Allows users to get cache objects created by other nodes.
     @http:ResourceConfig {
         methods: ["GET"],
         path: "/cache/get/{key}"
     }
-    cacheGet(endpoint caller, http:Request req,string key) {
+    cacheGet(endpoint caller, http:Request req, string key) {
         http:Response res = new;
         json resp;
         if (cacheMap.hasKey(key)){
             resp = check <json>cacheMap[key];
         }
         else {
-            resp = {"status":"Not found"};
+            resp = { "status": "Not found" };
         }
 
         res.setJsonPayload(untaint resp);

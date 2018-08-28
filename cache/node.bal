@@ -5,65 +5,59 @@ import ballerina/config;
 import consistent;
 
 
-//Load Balancer endpoint that uses round robin data distribution
-endpoint http:LoadBalanceClient lbBackendEP {
-    targets: [
-        { url: "http://localhost:"+config:getAsString("port", default = "7000") }
-    ],
-    algorithm: http:ROUND_ROBIN,
-    timeoutMillis: 5000
-};
-consistent:ConsistentHash c = new();
+consistent:ConsistentHash hashRing = new();
 
-public Node [] nodeList;
+Node[] nodeList;
 
+//returns node list as a json
 function getNodeList() returns json {
-    json jsonObj = check <json> nodeList;
+    json jsonObj = check <json>nodeList;
     //foreach k, v in nodeList {
     //    jsonObj[k] = check v;
     //}
     return jsonObj;
 }
 
-function addServer(Node node) returns json{
-
+function addServer(Node node) returns json {
     nodeList[lengthof nodeList] = node;
-    c.add(node.ip);
+    // Adds node to node array
+    hashRing.add(node.ip);
+    //Adds node ip to hash ring
     // updateLoadBalancerConfig();
-    json jsonNodeList = check <json>nodeList; // might casue prob
-    io:println ("New Node Added - new Node List");
-    io:println(jsonNodeList);
+    json jsonNodeList = check <json>nodeList;
+    log:printInfo("New Node Added " + node.ip);
     json changedJson = getChangedEntries();
+    // Gets changed cache entries of the node
     foreach nodeItem in nodeList {
-        if (nodeItem.ip==currentNode.ip){
+        if (nodeItem.ip == currentNode.ip){ //Ignore if its the current node
             continue;
         }
-        
-            http:ClientEndpointConfig config = { url: nodeItem.ip };
-            nodeEndpoint.init(config);
 
-            var res = nodeEndpoint->post("/data/multiple/store/" ,untaint changedJson[nodeItem.ip]);
-            io:println (changedJson[nodeItem.ip]);
-            match res {
-                http:Response resp => {
-                    var msg = resp.getJsonPayload();
-                    match msg {
-                        json jsonPayload => {
-                            io:println (jsonPayload);
-                        }
-                        error err => {
-                            log:printError(err.message, err = err);
-                        }
+        http:ClientEndpointConfig config = { url: nodeItem.ip };
+        nodeEndpoint.init(config);
+
+        var res = nodeEndpoint->post("/data/multiple/store/", untaint changedJson[nodeItem.ip]);
+        //sends changed entries to correct node
+        match res {
+            http:Response resp => {
+                var msg = resp.getJsonPayload();
+                match msg {
+                    json jsonPayload => {
+                        log:printInfo("Entries sent to " + nodeItem.ip);
+                    }
+                    error err => {
+                        log:printError(err.message, err = err);
                     }
                 }
-                error err => {
-                    log:printError(err.message, err = err);
-                }
             }
+            error err => {
+                log:printError(err.message, err = err);
+            }
+        }
     }
     return jsonNodeList;
 }
-
+//Removes item from server
 function removeServer(string ip) returns boolean {
     boolean found = false;
     foreach k, v in nodeList{
@@ -72,74 +66,15 @@ function removeServer(string ip) returns boolean {
             found = true;
         }
     }
+    //Remove from ring
+    //Reallocate Data
     return found;
 }
 
-function setServers (){
+//Adds servers in node list to hash ring
+function setServers() {
     foreach item in nodeList {
-         c.add(item.ip);
+        hashRing.add(item.ip);
     }
 }
-
-
-function updateLoadBalancerConfig() {
-    //Populating Target Service
-    http:TargetService[] tar;
-    foreach k, v in nodeList {
-        http:TargetService serv = { url: v.ip};
-        tar[k] = serv;
-    }
-    io:println(tar);
-    //Updating LoadBalacnerClientEndpointConfig
-    http:LoadBalanceClientEndpointConfiguration cfg = {
-        targets: tar,
-        algorithm: http:ROUND_ROBIN,
-        timeoutMillis: 5000
-    };
-    lbBackendEP.init(cfg);
-}
-
-
-//Load Balancer is used to distribute data across the nodes in the cluster
-@http:ServiceConfig {
-    basePath: "/lb"
-}
-service<http:Service> loadBalancerDemoService bind listner {
-
-    @http:ResourceConfig {
-        path: "/"
-    }
-    invokeEndpoint(endpoint caller, http:Request req) {
-        json|error obj = req.getJsonPayload();
-        json requestPayload;
-        match obj {
-            json jsonObj => {
-                requestPayload = jsonObj;
-            }
-            error err => {
-                io:println(err);
-            }
-        }
-        http:Request outRequest = new;
-        outRequest.setPayload(untaint requestPayload);
-        var response = lbBackendEP->post("/data/store", outRequest);
-        match response {
-            http:Response resp => {
-                caller->respond(resp) but {
-                    error e => log:printError("Error sending response", err = e)
-                };
-            }
-            error responseError => {
-                http:Response outResponse = new;
-                outResponse.statusCode = 500;
-                outResponse.setPayload(responseError.message);
-                caller->respond(outResponse) but {
-                    error e => log:printError("Error sending response", err = e)
-                };
-            }
-        }
-    }
-}
-
-
 

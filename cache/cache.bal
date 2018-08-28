@@ -15,20 +15,24 @@ type Node record {
     string id;
     string ip;
 };
-
+//Cache Entry record represents a single cache entry.
+//This is how Cache entry saved in memory
 type CacheEntry record {
     any value;
     int lastAccessedTime;
     int timesAccessed;
     int createdTime;
 };
-
+//
+//This map holds Cache Maps
 map<Cache> cacheMap;
 string currentIP = config:getAsString("ip", default = "http://localhost");
 int currentPort = config:getAsInt("port", default = 7000);
+
+//Object contains details of the current Node
 Node currentNode = {
-    id:config:getAsString("id", default = "1"),
-    ip:config:getAsString("ip", default = "http://localhost")+":"+config:getAsInt("port", default = 7000)
+    id: config:getAsString("id", default = "1"),
+    ip: config:getAsString("ip", default = "http://localhost") + ":" + config:getAsInt("port", default = 7000)
 };
 
 public function createCluster() {
@@ -39,18 +43,15 @@ public function createCluster() {
 public function joinCluster(string... nodeIPs) {
 
     string currentIpWithPort = currentNode.ip;
-    int i = 0;
-    int nodeLength = lengthof nodeIPs;
-    io:println(nodeLength);
     //server list json init
-    json serverList = { "0": check <json> currentNode };
+    json serverList = { "0": check <json>currentNode };
     //sending requests for existing nodes
-    while (i < nodeLength) {
+    foreach node in nodeIPs {
         //changing the url of client endpoint
-        http:ClientEndpointConfig config = { url: nodeIPs[i] };
+        http:ClientEndpointConfig config = { url: node };
         nodeEndpoint.init(config);
 
-        json serverDetailsJSON = check <json> currentNode;
+        json serverDetailsJSON = check <json>currentNode;
         var response = nodeEndpoint->post("/node/add", untaint serverDetailsJSON);
 
         match response {
@@ -69,44 +70,41 @@ public function joinCluster(string... nodeIPs) {
                 log:printError(err.message, err = err);
             }
         }
-        i = i + 1;
     }
     //Setting local node list
-    nodeList = untaint check <Node[]> serverList;
-    //nodeList[lengthof nodeList] = currentNode;
+    nodeList = untaint check <Node[]>serverList;
     setServers();
-    //updateLoadBalancerConfig();
-    io:println ("Joined the cluster- Node List");
-    io:println (nodeList);
-    io:println(c.sortedHashes);
+    log:printInfo("Joined the cluster");
 
 }
 
 public function createCache(string name) {
     cacheMap[name] = new Cache(name);
+    log:printInfo("Cache Created " + name);
 }
 
 public function getCache(string name) returns Cache? {
 
-    int nodeLength = lengthof nodeList;
-    int i = 0;
-    while (i < nodeLength) {
+    foreach node in nodeList {
         //changing the url of client endpoint
-        http:ClientEndpointConfig cfg = { url: nodeList[i].ip };
+        http:ClientEndpointConfig cfg = { url: node.ip };
         nodeEndpoint.init(cfg);
-        var response = nodeEndpoint->get("/cache/get/"+name);
+        var response = nodeEndpoint->get("/cache/get/" + name);
 
         match response {
             http:Response resp => {
                 var msg = resp.getJsonPayload();
                 match msg {
                     json jsonPayload => {
-                        if (!(jsonPayload["status"].toString()=="Not found")){
-                            Cache  x= check <Cache>jsonPayload;
-                            cacheMap[name]=x;
-                            return x;
+                        if (!(jsonPayload["status"].toString() == "Not found")){
+                            Cache cacheObj = check <Cache>jsonPayload;
+                            cacheMap[name] = cacheObj;
+                            log:printInfo("Cache Found- " + name);
+                            return cacheObj;
+                        } else {
+                            log:printWarn("Cache not found- " + name);
+                            return ();
                         }
-
                     }
                     error err => {
                         log:printError(err.message, err = err);
@@ -117,7 +115,6 @@ public function getCache(string name) returns Cache? {
                 log:printError(err.message, err = err);
             }
         }
-        i = i + 1;
     }
 
     return ();
@@ -127,13 +124,12 @@ public function getCache(string name) returns Cache? {
 
 public type Cache object {
     string name;
-    localCache:Cache nearCache = new(capacity = 100, expiryTimeMillis = 24*60000, evictionFactor = 0.2);
+    localCache:Cache nearCache = new(capacity = 100, expiryTimeMillis = 24 * 60000, evictionFactor = 0.2);
 
     //To construct an Cache object you need two parameters. First one is your current IP in the node. 
     //Second one is a Rest parameter. you have to send ips of existing nodes in your cluster as string to this parameter.
     //In simple terms, current node sends broadcast to all the existing nodes so they can add the new node to their cluster node list.
     //then it takes the complete node list as the response and store it locally for further use.
-
     public new(name) {
 
     }
@@ -144,58 +140,33 @@ public type Cache object {
     public function put(string key, any value) {
         //Adding in to nearCache for quick retrival
         // nearCache.put (key,value);
-        string nodeIP = c.get(key);
+        string nodeIP = hashRing.get(key);
         int currentTime = time:currentTime().time;
         CacheEntry entry = { value: value, lastAccessedTime: currentTime, timesAccessed: 0, createdTime: currentTime };
-        json j = check <json>entry;
-        j["key"] = key;
+        json entryJSON = check <json>entry;
+        entryJSON["key"] = key;
 
-            http:ClientEndpointConfig config = { url: nodeIP };
-            nodeEndpoint.init(config);
+        http:ClientEndpointConfig config = { url: nodeIP };
+        nodeEndpoint.init(config);
 
-            var res = nodeEndpoint->post("/data/store/" ,j);
-            match res {
-                http:Response resp => {
-                    var msg = resp.getJsonPayload();
-                    match msg {
-                        json jsonPayload => {
-                            io:println (jsonPayload);
-                        }
-                        error err => {
-                            log:printError(err.message, err = err);
-                        }
+        var res = nodeEndpoint->post("/data/store/", entryJSON);
+        match res {
+            http:Response resp => {
+                var msg = resp.getJsonPayload();
+                match msg {
+                    json jsonPayload => {
+                        log:printInfo("'" + jsonPayload["key"].toString() + "' added");
+                        //TODO Key already exists
+                    }
+                    error err => {
+                        log:printError(err.message, err = err);
                     }
                 }
-                error err => {
-                    log:printError(err.message, err = err);
-                }
             }
-
-        // int currentTime = time:currentTime().time;
-        // CacheEntry entry = { value: value, lastAccessedTime: currentTime, timesAccessed: 0, createdTime: currentTime };
-        // json j = check <json>entry;
-        // j["key"] = key;
-
-        // //sends data to load balacner.
-        // http:ClientEndpointConfig config = { url: "http://localhost:" + config:getAsString("port", default = "7000") };
-        // nodeEndpoint.init(config);
-        // var response = nodeEndpoint->post("/lb", untaint j);
-        // match response {
-        //     http:Response resp => {
-        //         var msg = resp.getJsonPayload();
-        //         match msg {
-        //             json jsonPayload => {
-        //                 io:println(jsonPayload);
-        //             }
-        //             error err => {
-        //                 log:printError(err.message, err = err);
-        //             }
-        //         }
-        //     }
-        //     error err => {
-        //         log:printError(err.message, err = err);
-        //     }
-        // }
+            error err => {
+                log:printError(err.message, err = err);
+            }
+        }
     }
 
 
@@ -203,68 +174,38 @@ public type Cache object {
     //In this current version it checks each node if it has the given key or not (which is not very effecient.)
     public function get(string key) returns any? {
 
-        string nodeIP = c.get(key);
-            json requestedJSON;
-            http:ClientEndpointConfig config = { url: nodeIP };
-            nodeEndpoint.init(config);
+        string nodeIP = hashRing.get(key);
+        json requestedJSON;
+        http:ClientEndpointConfig config = { url: nodeIP };
+        nodeEndpoint.init(config);
 
-            var res = nodeEndpoint->get("/data/get/"+key);
-            match res {
-                http:Response resp => {
-                    var msg = resp.getJsonPayload();
-                    match msg {
-                        json jsonPayload => {
-                            if (jsonPayload.value != null){
-                                requestedJSON = jsonPayload;
-                                CacheEntry entry = check <CacheEntry>jsonPayload;
-                                return entry.value;
-                            }
+        var res = nodeEndpoint->get("/data/get/" + key);
+        match res {
+            http:Response resp => {
+                var msg = resp.getJsonPayload();
+                match msg {
+                    json jsonPayload => {
+                        if (jsonPayload.value != null){
+                            requestedJSON = jsonPayload;
+                            CacheEntry entry = check <CacheEntry>jsonPayload;
+                            log:printInfo("Entry found '" + key + "'");
+                            return entry.value;
                         }
-                        error err => {
-                            log:printError(err.message, err = err);
+                        else {
+                            log:printWarn("Entry not found '" + key + "'");
+                            return ();
                         }
                     }
-                }
-                error err => {
-                    log:printError(err.message, err = err);
+                    error err => {
+                        log:printError(err.message, err = err);
+                    }
                 }
             }
-
-        // //check near cache if key exists locally.
-        // if(nearCache.hasKey(key)){
-        //     return nearCache.get(key);
-        // }
-        // //else search in the cluster
-        // Node[] serverList = nodeList;
-        // json requestedJSON;
-        // //checking all nodes and return the value of the entry if found.
-        // foreach item in serverList {
-        //     http:ClientEndpointConfig config = { url: item.ip };
-        //     nodeEndpoint.init(config);
-
-        //     var res = nodeEndpoint->get("/data/get/" + key);
-        //     match res {
-        //         http:Response resp => {
-        //             var msg = resp.getJsonPayload();
-        //             match msg {
-        //                 json jsonPayload => {
-        //                     if (jsonPayload.value != null){
-        //                         requestedJSON = jsonPayload;
-        //                         CacheEntry entry = check <CacheEntry>jsonPayload;
-        //                         return entry.value;
-        //                     }
-        //                 }
-        //                 error err => {
-        //                     log:printError(err.message, err = err);
-        //                 }
-        //             }
-        //         }
-        //         error err => {
-        //             log:printError(err.message, err = err);
-        //         }
-        //     }
-        // }
-         return requestedJSON;
+            error err => {
+                log:printError(err.message, err = err);
+            }
+        }
+        return ();
     }
 
     // public function size() returns int {
