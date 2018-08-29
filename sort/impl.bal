@@ -23,7 +23,7 @@ documentation {
     R{{}} The sorted int array
 }
 public function mergeSort(int[] unsortedArray) returns @untainted int[] {
-    sort(unsortedArray, 0, lengthof unsortedArray-1);
+    sort(unsortedArray, 0, lengthof unsortedArray - 1);
     return unsortedArray;
 }
 
@@ -55,38 +55,38 @@ function merge(int[] arr, int startIndex, int middleIndex, int endIndex) {
     int[] rightArray = [subArray2Size];
 
     //Copy data to temp
-    foreach i in 0 ... subArray1Size-1 {
+    foreach i in 0...subArray1Size - 1 {
         leftArray[i] = arr[startIndex + i];
     }
 
-    foreach j in 0 ... subArray2Size-1 {
+    foreach j in 0...subArray2Size - 1 {
         rightArray[j] = arr[middleIndex + 1 + j];
     }
 
-    int i=0;
+    int i = 0;
     int j = 0;
 
     int k = startIndex;
     while (i < subArray1Size && j < subArray2Size) {
         if (leftArray[i] <= rightArray[j]) {
             arr[k] = leftArray[i];
-            i = i +1;
+            i = i + 1;
         } else {
             arr[k] = rightArray[j];
-            j = j +1;
+            j = j + 1;
         }
         k = k + 1;
     }
 
-    while(i < subArray1Size) {
+    while (i < subArray1Size) {
         arr[k] = leftArray[i];
-        i = i +1;
+        i = i + 1;
         k = k + 1;
     }
 
-    while(j < subArray2Size) {
+    while (j < subArray2Size) {
         arr[k] = rightArray[j];
-        j = j +1;
+        j = j + 1;
         k = k + 1;
     }
 }

@@ -11,12 +11,25 @@ endpoint http:Client nodeEndpoint {
 endpoint http:Listener listner {
     port: config:getAsInt("port", default = 7000)
 };
+
+documentation {
+    Represents a node in the cluster
+
+    F{{id}} Node ID
+    F{{ip}} IP of the node
+}
 type Node record {
     string id;
     string ip;
 };
-//Cache Entry record represents a single cache entry.
-//This is how Cache entry saved in memory
+documentation {
+    Represents a cache entry.
+
+    F{{value}} cache value
+    F{{lastAccessedTime}} last accessed time in ms of this value which is used to remove LRU cached values
+    F{{timesAccessed}} records the times entry retrived by the user
+    F{{createdTime}} records the created time of the entry
+}
 type CacheEntry record {
     any value;
     int lastAccessedTime;
@@ -24,22 +37,26 @@ type CacheEntry record {
     int createdTime;
 };
 //
-//This map holds Cache Maps
+documentation { Map which stores all of the caches. }
 map<Cache> cacheMap;
 string currentIP = config:getAsString("ip", default = "http://localhost");
 int currentPort = config:getAsInt("port", default = 7000);
 
-//Object contains details of the current Node
+documentation { Object contains details of the current Node }
 Node currentNode = {
     id: config:getAsString("id", default = "1"),
     ip: config:getAsString("ip", default = "http://localhost") + ":" + config:getAsInt("port", default = 7000)
 };
 
+documentation { Allows uesrs to create the cluster }
 public function createCluster() {
     json j = addServer(currentNode);
 }
 
-
+documentation {
+    Allows uesrs to join the cluster
+     P{{nodeIPs}} ips of the nodes in the cluster
+}
 public function joinCluster(string... nodeIPs) {
 
     string currentIpWithPort = currentNode.ip;
@@ -78,11 +95,20 @@ public function joinCluster(string... nodeIPs) {
 
 }
 
+documentation {
+    Allows users to create a cache object
+    P{{name}} name of the cache object
+}
 public function createCache(string name) {
     cacheMap[name] = new Cache(name);
     log:printInfo("Cache Created " + name);
 }
 
+documentation {
+    Allows users to create a cache object
+    P{{name}} name of the cache object
+    R{{}}Cache object associated with the given name
+}
 public function getCache(string name) returns Cache? {
 
     foreach node in nodeList {
@@ -116,27 +142,26 @@ public function getCache(string name) returns Cache? {
             }
         }
     }
-
     return ();
 }
 
 
-
+documentation { Represents a cache. }
 public type Cache object {
     string name;
     localCache:Cache nearCache = new(capacity = 100, expiryTimeMillis = 24 * 60000, evictionFactor = 0.2);
 
-    //To construct an Cache object you need two parameters. First one is your current IP in the node. 
-    //Second one is a Rest parameter. you have to send ips of existing nodes in your cluster as string to this parameter.
-    //In simple terms, current node sends broadcast to all the existing nodes so they can add the new node to their cluster node list.
-    //then it takes the complete node list as the response and store it locally for further use.
+
     public new(name) {
 
     }
 
-    //Put function allows users to store key and value in the cache.
-    //In the current version put function, it sends key and value for loadbalacner located in node.bal to achieve round robin 
-    //data distribute pattern
+    documentation {
+        Adds the given key, value pair to the provided cache.It will be stored in a appropirate node in the cluster
+
+        P{{key}} value which should be used as the key
+        P{{value}} value to be cached
+    }
     public function put(string key, any value) {
         //Adding in to nearCache for quick retrival
         // nearCache.put (key,value);
@@ -170,8 +195,13 @@ public type Cache object {
     }
 
 
-    //Get function allows you to retrieve data from the stores of all the nodes.
-    //In this current version it checks each node if it has the given key or not (which is not very effecient.)
+    documentation {
+        Returns the cached value associated with the given key. If the provided cache key is not found in the cluster, ()
+        will be returned.
+
+        R{{key}} key which is used to retrieve the cached value
+        R{{}}The cached value associated with the given key
+    }
     public function get(string key) returns any? {
 
         string nodeIP = hashRing.get(key);
