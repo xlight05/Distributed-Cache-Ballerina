@@ -3,7 +3,6 @@ import ballerina/io;
 import ballerina/http;
 import ballerina/log;
 import ballerina/config;
-import ballerina/cache as localCache;
 
 endpoint http:Client nodeEndpoint {
     url: "http://localhost:" + config:getAsString("port", default = "7000")
@@ -149,7 +148,7 @@ public function getCache(string name) returns Cache? {
 documentation { Represents a cache. }
 public type Cache object {
     string name;
-    localCache:Cache nearCache = new(capacity = 100, expiryTimeMillis = 24 * 60000, evictionFactor = 0.2);
+    LocalCache nearCache = new(capacity = 2, evictionFactor = 0.5);
 
 
     public new(name) {
@@ -164,7 +163,7 @@ public type Cache object {
     }
     public function put(string key, any value) {
         //Adding in to nearCache for quick retrival
-        // nearCache.put (key,value);
+        nearCache.put (key,value);
         string nodeIP = hashRing.get(key);
         int currentTime = time:currentTime().time;
         CacheEntry entry = { value: value, lastAccessedTime: currentTime, timesAccessed: 0, createdTime: currentTime };
@@ -203,7 +202,10 @@ public type Cache object {
         R{{}}The cached value associated with the given key
     }
     public function get(string key) returns any? {
-
+        if (nearCache.hasKey(key)){
+            log:printInfo(key+ " retrived by local Cache");
+            return nearCache.get(key);
+        }
         string nodeIP = hashRing.get(key);
         json requestedJSON;
         http:ClientEndpointConfig config = { url: nodeIP };
