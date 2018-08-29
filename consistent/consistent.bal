@@ -16,7 +16,10 @@ public type ConsistentHash object {
 
     }
 
-    //Adds node to the hash ring
+    documentation {
+    Adds a node to the hash ring
+    P{{nodeName}} name of the node (identifier)
+    }
     public function add(string nodeName) {
         int i = 0;
         //creates replica nodes (virtual nodes)
@@ -41,7 +44,12 @@ public type ConsistentHash object {
 
         sortedHashes = sortArr;
     }
-    //Get method is used to identify where a particular node or data  is placed.
+
+    documentation {
+    Used to identify which node is repnsible for handling the data for the key
+    P{{key}} Key of the data or node identifier
+    R{{}} Responsible node for the given key
+    }
     public function get(string key) returns string {
         int enteredKeyHash = getCrc32HashDecimal(key);
         int ind = 0;
