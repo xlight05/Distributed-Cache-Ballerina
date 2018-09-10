@@ -30,20 +30,39 @@ function getAllEntries() returns json {
 //Returns all the changed entries of the node catagorized according to node IP.
 function getChangedEntries() returns json {
     json entries;
+    string currentNodeIP = currentNode.ip;
     //Node catagorize
     foreach node in nodeList {
-        if (node.ip != currentNode.ip){
+        if (node.ip != currentNodeIP){
             entries[node.ip] = [];
         }
     }
     foreach key, value in cacheEntries {
-        string correctNodeIP = hashRing.get(key);
-        string currentNodeIP = currentNode.ip;
-        //Checks if the node is changed
-        if (correctNodeIP != currentNodeIP){
-            value["key"] = key;
-            entries[correctNodeIP][lengthof entries[correctNodeIP]] = check <json>value;
-            boolean x = cacheEntries.remove(key); //Assuming the response was recieved :/
+        
+        if(value.replica){
+            string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
+            boolean remove = true;
+            foreach item in replicaNodes {
+                if (item!=currentNodeIP){
+                    value["key"] = key;
+                    entries[item][lengthof entries[item]] = check <json>value;
+                }
+                else {
+                    remove = false;
+                }
+            }
+            if (remove){
+                _ = cacheEntries.remove(key);
+            }
+
+        }else {
+            string correctNodeIP = hashRing.get(key);
+            //Checks if the node is changed
+            if (correctNodeIP != currentNodeIP){
+                value["key"] = key;
+                entries[correctNodeIP][lengthof entries[correctNodeIP]] = check <json>value;
+                _ = cacheEntries.remove(key); //Assuming the response was recieved :/
+            }
         }
     }
     return entries;

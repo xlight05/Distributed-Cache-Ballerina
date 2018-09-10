@@ -8,17 +8,17 @@ function main(string... args) {
 
     cache:createCluster();
     cache:createCache("oauthCache");
-    var cacheVar = cache:getCache("oauthCache");
-    cache:Cache oauthCache = new("local");
-
-    match cacheVar {
-        cache:Cache cache => {
-            oauthCache = cache;
-        }
-        () err => {
-            log:printError("Error sending response", err = err);
-        }
-    }
+    //var cacheVar = cache:getCache("oauthCache");
+    cache:Cache oauthCache = new("oauthCache");
+    io:println(oauthCache.name);
+    // match cacheVar {
+    //     cache:Cache cache => {
+    //         oauthCache = cache;
+    //     }
+    //     () err => {
+    //         log:printError("Error sending response", err = err);
+    //     }
+    // }
 
     oauthCache.put("Name", "Ballerina");
 
@@ -26,3 +26,4 @@ function main(string... args) {
     io:println(x);
     runtime:sleep(100000000);
 }
+

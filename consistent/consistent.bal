@@ -58,7 +58,7 @@ public type ConsistentHash object {
         int j = lengthof sortedHashes;
         while (i < j) {
 
-            int h = <int>math:floor((i + j) / 2);
+            int h = <int>math:floor((i + j) / 2); //binary search
 
             if !(sortedHashes[h] > enteredKeyHash) {
                 i = h + 1; // preserves f(i-1) == false

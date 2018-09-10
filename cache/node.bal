@@ -2,10 +2,10 @@ import ballerina/io;
 import ballerina/http;
 import ballerina/log;
 import ballerina/config;
-import consistent;
+//import consistent;
+import consistent_bound;
 
-
-consistent:ConsistentHash hashRing = new();
+consistent_bound:Consistent hashRing = new();
 
 Node[] nodeList;
 
@@ -18,14 +18,20 @@ function getNodeList() returns json {
     return jsonObj;
 }
 
+function setReplicationFactor (){
+    //better replication factor logic here
+    replicationFact = 1;
+}
+
 function addServer(Node node) returns json {
     nodeList[lengthof nodeList] = node;
     // Adds node to node array
     hashRing.add(node.ip);
-    //Adds node ip to hash ring
-    // updateLoadBalancerConfig();
+    //Adds node ip to hash ringa
+    setReplicationFactor();
     json jsonNodeList = check <json>nodeList;
     log:printInfo("New Node Added " + node.ip);
+    
     json changedJson = getChangedEntries();
     // Gets changed cache entries of the node
     foreach nodeItem in nodeList {
@@ -57,6 +63,7 @@ function addServer(Node node) returns json {
     }
     return jsonNodeList;
 }
+
 //Removes item from server
 function removeServer(string ip) returns boolean {
     boolean found = false;

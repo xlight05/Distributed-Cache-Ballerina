@@ -34,12 +34,14 @@ type CacheEntry record {
     int lastAccessedTime;
     int timesAccessed;
     int createdTime;
+    boolean replica;
 };
 //
 documentation { Map which stores all of the caches. }
 map<Cache> cacheMap;
 string currentIP = config:getAsString("ip", default = "http://localhost");
 int currentPort = config:getAsInt("port", default = 7000);
+int replicationFact = 1;
 
 documentation { Object contains details of the current Node }
 Node currentNode = {
@@ -127,8 +129,7 @@ public function getCache(string name) returns Cache? {
                             log:printInfo("Cache Found- " + name);
                             return cacheObj;
                         } else {
-                            log:printWarn("Cache not found- " + name);
-                            return ();
+                            log:printWarn(name + " Cache not found- in "+node.ip);
                         }
                     }
                     error err => {
@@ -143,16 +144,32 @@ public function getCache(string name) returns Cache? {
     }
     return ();
 }
-
+    
 
 documentation { Represents a cache. }
 public type Cache object {
-    string name;
+    public string name;
     LocalCache nearCache = new(capacity = 2, evictionFactor = 0.5);
+    string cacheCfg;
 
-
-    public new(name) {
-
+    public new(name,cacheCfg="none") {
+        if (cacheMap.hasKey(name)){
+            return;
+        }
+        var cacheVar = getCache(name);
+        
+        match cacheVar {
+            Cache cache => {
+                name = cache.name;
+                cacheCfg=cache.cacheCfg;
+                //nearCache cfg
+            }
+            () => {
+                cacheMap[name]=self;
+                log:printInfo("Cache Created " + name);
+                return;
+            }
+        }
     }
 
     documentation {
@@ -169,7 +186,7 @@ public type Cache object {
         CacheEntry entry = { value: value, lastAccessedTime: currentTime, timesAccessed: 0, createdTime: currentTime };
         json entryJSON = check <json>entry;
         entryJSON["key"] = key;
-
+        entryJSON["replica"]=false;
         http:ClientEndpointConfig config = { url: nodeIP };
         nodeEndpoint.init(config);
 
@@ -189,6 +206,34 @@ public type Cache object {
             }
             error err => {
                 log:printError(err.message, err = err);
+            }
+        }
+        //TODO Not enoguh nodes for replica
+        entryJSON["replica"]=true;
+        string[] replicaNodes = hashRing.GetClosestN(key,replicationFact);
+        foreach node in replicaNodes {
+            if (node==nodeIP){
+                continue;
+            }
+            http:ClientEndpointConfig cfg = { url: node };
+            nodeEndpoint.init(cfg);
+
+            var resz = nodeEndpoint->post("/data/store/", entryJSON);
+            match resz {
+                http:Response resp => {
+                    var msg = resp.getJsonPayload();
+                    match msg {
+                        json jsonPayload => {
+                            log:printInfo("'" + jsonPayload["key"].toString() + "' replica added to node "+node);
+                        }
+                        error err => {
+                            log:printError(err.message, err = err);
+                        }
+                    }
+                }
+                error err => {
+                    log:printError(err.message, err = err);
+                }
             }
         }
     }
@@ -246,6 +291,19 @@ public type Cache object {
     // public function hasKey(string key) returns boolean {
     //     return entries.hasKey(key);
     // }
+
+    public function locateNode(string key) {
+        io:println(key + " located in ");
+        io:println (hashRing.get(key));
+    }
+    public function locateReplicas(string key) {
+        io:println(key + " replica located in ");
+        string[] gg = hashRing.GetClosestN(key, replicationFact);
+        foreach item in gg {
+            io:println (item);
+        }
+        io:println();
+    }
 
 };
 
