@@ -2,7 +2,7 @@ import ballerina/time;
 import ballerina/io;
 import ballerina/http;
 import ballerina/log;
-import ballerina/config;
+import ballerina/config;        
 
 endpoint http:Client nodeEndpoint {
     url: "http://localhost:" + config:getAsString("port", default = "7000")
@@ -42,12 +42,32 @@ map<Cache> cacheMap;
 string currentIP = config:getAsString("ip", default = "http://localhost");
 int currentPort = config:getAsInt("port", default = 7000);
 int replicationFact = 1;
+boolean isLocalCacheEnabled = true;
+//boolean init = initNodeConfig();
 
 documentation { Object contains details of the current Node }
 Node currentNode = {
     id: config:getAsString("id", default = "1"),
     ip: config:getAsString("ip", default = "http://localhost") + ":" + config:getAsInt("port", default = 7000)
 };
+
+
+public function initNodeConfig() returns boolean {
+    //Suggestion rest para array suppot for config API
+    string hosts = config:getAsString("hosts");
+    string[] configNodeList = hosts.split(",");
+    io:println(configNodeList);
+    if (configNodeList[0]==""){
+        io:println ("In Create");
+        createCluster();
+
+    }else {
+        io:println ("In Join");
+        joinCluster(configNodeList);
+
+    }
+    return true;
+}
 
 documentation { Allows uesrs to create the cluster }
 public function createCluster() {
@@ -58,7 +78,7 @@ documentation {
     Allows uesrs to join the cluster
      P{{nodeIPs}} ips of the nodes in the cluster
 }
-public function joinCluster(string... nodeIPs) {
+public function joinCluster(string [] nodeIPs) {
 
     string currentIpWithPort = currentNode.ip;
     //server list json init
@@ -180,7 +200,9 @@ public type Cache object {
     }
     public function put(string key, any value) {
         //Adding in to nearCache for quick retrival
-        nearCache.put (key,value);
+        if (isLocalCacheEnabled){
+            nearCache.put (key,value);
+        }
         string nodeIP = hashRing.get(key);
         int currentTime = time:currentTime().time;
         CacheEntry entry = { value: value, lastAccessedTime: currentTime, timesAccessed: 0, createdTime: currentTime };
@@ -200,12 +222,12 @@ public type Cache object {
                         //TODO Key already exists
                     }
                     error err => {
-                        log:printError(err.message, err = err);
+                        log:printError("error json convert", err = err);
                     }
                 }
             }
             error err => {
-                log:printError(err.message, err = err);
+                log:printError("error zaxs", err = err);
             }
         }
         //TODO Not enoguh nodes for replica
@@ -247,9 +269,11 @@ public type Cache object {
         R{{}}The cached value associated with the given key
     }
     public function get(string key) returns any? {
-        if (nearCache.hasKey(key)){
-            log:printInfo(key+ " retrived by local Cache");
-            return nearCache.get(key);
+        if (isLocalCacheEnabled){
+            if (nearCache.hasKey(key)){
+                log:printInfo(key+ " retrived by local Cache");
+                return nearCache.get(key);
+            }
         }
         string nodeIP = hashRing.get(key);
         json requestedJSON;

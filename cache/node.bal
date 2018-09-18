@@ -31,7 +31,7 @@ function addServer(Node node) returns json {
     setReplicationFactor();
     json jsonNodeList = check <json>nodeList;
     log:printInfo("New Node Added " + node.ip);
-    
+    //TODO change redistribution in to seperate method
     json changedJson = getChangedEntries();
     // Gets changed cache entries of the node
     foreach nodeItem in nodeList {
@@ -69,7 +69,7 @@ function removeServer(string ip) returns boolean {
     boolean found = false;
     foreach k, v in nodeList{
         if (v.ip == ip){
-            //v = ();
+            //remove node from array
             found = true;
         }
     }

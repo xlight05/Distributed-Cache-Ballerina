@@ -24,7 +24,7 @@ public type Consistent object {
     float load;
 
     public new(partitionCount = 7, replicationFactor = 20, load = 1.25) {
-
+            
     }
 
     public function add(string member) {
