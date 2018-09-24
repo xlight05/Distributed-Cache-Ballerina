@@ -1,22 +1,37 @@
 import ballerina/http;
 import ballerina/log;
 import ballerina/io;
-
+import ballerina/math;
 //This service is used to store data in nodes. Each service in the node acts as a local in memory store
 map<CacheEntry> cacheEntries;
 
 //Returns single cache entry according to given key
 function getCacheEntry(string key) returns json {
     CacheEntry default;
-    CacheEntry obj = cacheEntries[key] ?: default;
-    json payload = check <json>obj;
+    //CacheEntry obj = cacheEntries[key] ?: default;
+    json payload;
+    CacheEntry? cacheEntry = cacheEntries[key];
+    match cacheEntry {
+        CacheEntry entry => {
+            entry.lastAccessedTime = time:currentTime().time;
+            payload = check <json>entry;
+        }
+        () => {
+            payload = check <json>default;
+        }
+    }
+    //json payload = check <json>obj;
     return payload;
 }
 
 //Adds a single cache entry to the store
 function setCacheEntry(json jsObj) returns json {
+    if (CacheCapacity <= lengthof cacheEntries){
+        io:println(lengthof cacheEntries);
+        evictEntries();
+    }
     string key = jsObj["key"].toString();
-    jsObj.remove(key);
+    //jsObj.remove(key);
     cacheEntries[key] = check <CacheEntry>jsObj;
     return jsObj;
 }
@@ -38,13 +53,13 @@ function getChangedEntries() returns json {
         }
     }
     foreach key, value in cacheEntries {
-        
-        if(value.replica){
+
+        if (value.replica){
             string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
             boolean remove = true;
             foreach item in replicaNodes {
-                if (item!=currentNodeIP){
-                    value["key"] = key;
+                if (item != currentNodeIP){
+                    //value["key"] = key;
                     entries[item][lengthof entries[item]] = check <json>value;
                 }
                 else {
@@ -55,11 +70,11 @@ function getChangedEntries() returns json {
                 _ = cacheEntries.remove(key);
             }
 
-        }else {
+        } else {
             string correctNodeIP = hashRing.get(key);
             //Checks if the node is changed
             if (correctNodeIP != currentNodeIP){
-                value["key"] = key;
+                //value["key"] = key;
                 entries[correctNodeIP][lengthof entries[correctNodeIP]] = check <json>value;
                 _ = cacheEntries.remove(key); //Assuming the response was recieved :/
             }
@@ -76,3 +91,93 @@ function storeMultipleEntries(json jsonObj) {
         cacheEntries[key] = check <CacheEntry>nodeItem;
     }
 }
+
+function evictEntries() {
+    int keyCountToEvict = <int>(CacheCapacity * cacheEvictionFactor);
+    // Create new arrays to hold keys to be removed and hold the corresponding timestamps.
+    string[] cacheKeysToBeRemoved = [];
+    int[] timestamps = [];
+    string[] keys = cacheEntries.keys();
+    // Iterate through the keys.
+    foreach key in keys {
+        CacheEntry? cacheEntry = cacheEntries[key];
+        match cacheEntry {
+            CacheEntry entry => {
+                if (entry.replica){
+                    continue;
+                }
+                // Check and add the key to the cacheKeysToBeRemoved if it matches the conditions.
+                checkAndAdd(keyCountToEvict, cacheKeysToBeRemoved, timestamps, key, entry.lastAccessedTime);
+            }
+            () => {
+                // If the key is not found in the map, that means that the corresponding cache is already removed
+                // (possibly by a another worker).
+            }
+        }
+    }
+    // Return the array.
+    //io:println(cacheKeysToBeRemoved);
+
+    json entries;
+    string currentNodeIP = currentNode.ip;
+    //Node catagorize
+    foreach node in nodeList {
+        if (node.ip != currentNodeIP){
+            entries[node.ip] = [];
+        }
+    }
+    foreach c in cacheKeysToBeRemoved {
+        // These cache values are ignred. So it is not needed to check the return value for the remove function.
+        string[] replicaNodes = hashRing.GetClosestN(c, replicationFact);
+        // CacheEntry default;
+        // CacheEntry obj = cacheEntries[c] ?: default;
+        foreach node in replicaNodes {
+            if (node != currentNodeIP){
+                //value["key"] = key;
+                //json test = {key:c};
+                entries[node][lengthof entries[node]] = c;
+            }
+        }
+        _ = cacheEntries.remove(c);
+        log:printInfo(c + " Entry Evicted");
+    }
+    io:println(entries);
+    foreach nodeItem in nodeList {
+        if (nodeItem.ip == currentNode.ip){ //Ignore if its the current node
+            continue;
+        }
+
+        http:Client? clientNode = clientMap[nodeItem.ip];
+        http:Client client;
+        match clientNode {
+            http:Client c => {
+                client = c;
+            }
+            () => {
+                log:printError("Client not found");
+            }
+        }
+        nodeEndpoint = client;
+
+        var res = nodeEndpoint->delete("/data/evict", untaint entries[nodeItem.ip]);
+        //sends changed entries to correct node
+        match res {
+            http:Response resp => {
+                var msg = resp.getJsonPayload();
+                match msg {
+                    json jsonPayload => {
+                        log:printInfo("Entries sent to " + nodeItem.ip);
+                    }
+                    error err => {
+                        log:printError(err.message, err = err);
+                    }
+                }
+            }
+            error err => {
+                log:printError(err.message, err = err);
+            }
+        }
+    }
+}
+
+

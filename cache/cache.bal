@@ -2,7 +2,7 @@ import ballerina/time;
 import ballerina/io;
 import ballerina/http;
 import ballerina/log;
-import ballerina/config;        
+import ballerina/config;
 
 endpoint http:Client nodeEndpoint {
     url: "http://localhost:" + config:getAsString("port", default = "7000")
@@ -31,6 +31,7 @@ documentation {
 }
 type CacheEntry record {
     any value;
+    string key;
     int lastAccessedTime;
     int timesAccessed;
     int createdTime;
@@ -42,7 +43,9 @@ map<Cache> cacheMap;
 string currentIP = config:getAsString("ip", default = "http://localhost");
 int currentPort = config:getAsInt("port", default = 7000);
 int replicationFact = 1;
-boolean isLocalCacheEnabled = true;
+float cacheEvictionFactor = 0.1;
+int CacheCapacity = 10;
+boolean isLocalCacheEnabled = false;
 //boolean init = initNodeConfig();
 
 documentation { Object contains details of the current Node }
@@ -57,12 +60,13 @@ public function initNodeConfig() returns boolean {
     string hosts = config:getAsString("hosts");
     string[] configNodeList = hosts.split(",");
     io:println(configNodeList);
-    if (configNodeList[0]==""){
-        io:println ("In Create");
+    if (configNodeList[0] == ""){
+        io:
+        println("In Create");
         createCluster();
 
-    }else {
-        io:println ("In Join");
+    } else {
+        io:println("In Join");
         joinCluster(configNodeList);
 
     }
@@ -78,7 +82,7 @@ documentation {
     Allows uesrs to join the cluster
      P{{nodeIPs}} ips of the nodes in the cluster
 }
-public function joinCluster(string [] nodeIPs) {
+public function joinCluster(string[] nodeIPs) {
 
     string currentIpWithPort = currentNode.ip;
     //server list json init
@@ -111,6 +115,12 @@ public function joinCluster(string [] nodeIPs) {
     }
     //Setting local node list
     nodeList = untaint check <Node[]>serverList;
+    foreach item in nodeList {
+        http:Client client;
+        http:ClientEndpointConfig cc = { url: item.ip };
+        client.init(cc);
+        clientMap[item.ip] = client;
+    }
     setServers();
     log:printInfo("Joined the cluster");
 
@@ -149,7 +159,7 @@ public function getCache(string name) returns Cache? {
                             log:printInfo("Cache Found- " + name);
                             return cacheObj;
                         } else {
-                            log:printWarn(name + " Cache not found- in "+node.ip);
+                            log:printWarn(name + " Cache not found- in " + node.ip);
                         }
                     }
                     error err => {
@@ -164,7 +174,7 @@ public function getCache(string name) returns Cache? {
     }
     return ();
 }
-    
+
 
 documentation { Represents a cache. }
 public type Cache object {
@@ -172,20 +182,20 @@ public type Cache object {
     LocalCache nearCache = new(capacity = 2, evictionFactor = 0.5);
     string cacheCfg;
 
-    public new(name,cacheCfg="none") {
+    public new(name, cacheCfg = "none") {
         if (cacheMap.hasKey(name)){
             return;
         }
         var cacheVar = getCache(name);
-        
+
         match cacheVar {
             Cache cache => {
                 name = cache.name;
-                cacheCfg=cache.cacheCfg;
+                cacheCfg = cache.cacheCfg;
                 //nearCache cfg
             }
             () => {
-                cacheMap[name]=self;
+                cacheMap[name] = self;
                 log:printInfo("Cache Created " + name);
                 return;
             }
@@ -201,17 +211,30 @@ public type Cache object {
     public function put(string key, any value) {
         //Adding in to nearCache for quick retrival
         if (isLocalCacheEnabled){
-            nearCache.put (key,value);
+            nearCache.put(key, value);
         }
         string nodeIP = hashRing.get(key);
         int currentTime = time:currentTime().time;
-        CacheEntry entry = { value: value, lastAccessedTime: currentTime, timesAccessed: 0, createdTime: currentTime };
+        CacheEntry entry = { value: value, key: key, lastAccessedTime: currentTime, timesAccessed: 0, createdTime:
+        currentTime };
         json entryJSON = check <json>entry;
         entryJSON["key"] = key;
-        entryJSON["replica"]=false;
-        http:ClientEndpointConfig config = { url: nodeIP };
-        nodeEndpoint.init(config);
+        entryJSON["replica"] = false;
 
+        //http:ClientEndpointConfig config = { url: nodeIP };
+        //nodeEndpoint.init(config);
+
+        http:Client? clientNode = clientMap[nodeIP];
+        http:Client client;
+        match clientNode {
+            http:Client c => {
+                client = c;
+            }
+            () => {
+                log:printError("Client not found");
+            }
+        }
+        nodeEndpoint = client;
         var res = nodeEndpoint->post("/data/store/", entryJSON);
         match res {
             http:Response resp => {
@@ -231,22 +254,35 @@ public type Cache object {
             }
         }
         //TODO Not enoguh nodes for replica
-        entryJSON["replica"]=true;
-        string[] replicaNodes = hashRing.GetClosestN(key,replicationFact);
+        entryJSON["replica"] = true;
+        string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
         foreach node in replicaNodes {
-            if (node==nodeIP){
+            if (node == nodeIP){
                 continue;
             }
-            http:ClientEndpointConfig cfg = { url: node };
-            nodeEndpoint.init(cfg);
+            io:println("Replica : " + node);
+            //http:ClientEndpointConfig cfg = { url: node };
+            //nodeEndpoint.init(cfg);
 
+
+            http:Client? replicaNode = clientMap[node];
+            http:Client replica;
+            match replicaNode {
+                http:Client c => {
+                    replica = c;
+                }
+                () => {
+                    log:printError("Client not found");
+                }
+            }
+            nodeEndpoint = replica;
             var resz = nodeEndpoint->post("/data/store/", entryJSON);
             match resz {
                 http:Response resp => {
                     var msg = resp.getJsonPayload();
                     match msg {
                         json jsonPayload => {
-                            log:printInfo("'" + jsonPayload["key"].toString() + "' replica added to node "+node);
+                            log:printInfo("'" + jsonPayload["key"].toString() + "' replica added to node " + node);
                         }
                         error err => {
                             log:printError(err.message, err = err);
@@ -271,15 +307,25 @@ public type Cache object {
     public function get(string key) returns any? {
         if (isLocalCacheEnabled){
             if (nearCache.hasKey(key)){
-                log:printInfo(key+ " retrived by local Cache");
+                log:printInfo(key + " retrived by local Cache");
                 return nearCache.get(key);
             }
         }
         string nodeIP = hashRing.get(key);
         json requestedJSON;
-        http:ClientEndpointConfig config = { url: nodeIP };
-        nodeEndpoint.init(config);
-
+        //http:ClientEndpointConfig config = { url: nodeIP };
+        //nodeEndpoint.init(config);
+        http:Client? clientNode = clientMap[nodeIP];
+        http:Client client;
+        match clientNode {
+            http:Client c => {
+                client = c;
+            }
+            () => {
+                log:printError("Client not found");
+            }
+        }
+        nodeEndpoint = client;
         var res = nodeEndpoint->get("/data/get/" + key);
         match res {
             http:Response resp => {
@@ -318,15 +364,50 @@ public type Cache object {
 
     public function locateNode(string key) {
         io:println(key + " located in ");
-        io:println (hashRing.get(key));
+        io:println(hashRing.get(key));
     }
     public function locateReplicas(string key) {
         io:println(key + " replica located in ");
         string[] gg = hashRing.GetClosestN(key, replicationFact);
         foreach item in gg {
-            io:println (item);
+            io:println(item);
         }
         io:println();
+    }
+    public function clearAllEntries() {
+        foreach node in nodeList {
+            http:Client? clientNode = clientMap[node.ip];
+            http:Client client;
+            match clientNode {
+                http:Client c => {
+                    client = c;
+                }
+                () => {
+                    log:printError("Client not found");
+                }
+            }
+            nodeEndpoint = client;
+            json testJson = { "message": "Test JSON", "status": 200 };
+            var response = nodeEndpoint->delete("/data/clear", testJson);
+
+            match response {
+                http:Response resp => {
+                    var msg = resp.getJsonPayload();
+                    match msg {
+                        json jsonPayload => {
+
+                        }
+                        error err => {
+                            log:printError(err.message, err = err);
+                        }
+                    }
+                }
+                error err => {
+                    log:printError(err.message, err = err);
+                }
+            }
+        }
+        log:printInfo("Nodes Cleared");
     }
 
 };

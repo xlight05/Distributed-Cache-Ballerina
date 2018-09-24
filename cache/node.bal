@@ -8,6 +8,7 @@ import consistent_bound;
 consistent_bound:Consistent hashRing = new();
 
 Node[] nodeList;
+map<http:Client> clientMap;
 
 //returns node list as a json
 function getNodeList() returns json {
@@ -18,7 +19,7 @@ function getNodeList() returns json {
     return jsonObj;
 }
 
-function setReplicationFactor (){
+function setReplicationFactor() {
     //better replication factor logic here
     replicationFact = 1;
 }
@@ -29,6 +30,10 @@ function addServer(Node node) returns json {
     hashRing.add(node.ip);
     //Adds node ip to hash ringa
     setReplicationFactor();
+    http:Client client;
+    http:ClientEndpointConfig cc = { url: node.ip };
+    client.init(cc);
+    clientMap[node.ip] = client;
     json jsonNodeList = check <json>nodeList;
     log:printInfo("New Node Added " + node.ip);
     //TODO change redistribution in to seperate method

@@ -11,7 +11,9 @@ port=2000
 api=7000
 counter=1
 lastHost=""
-while [ $counter -le 3 ]
+#echo "Total Nodes?"
+#totalNodes=read
+while [ $counter -le 2 ]
 do
 url="http://localhost"
 urlWithPort=$url":"$port
@@ -24,14 +26,13 @@ fi
 
 ##Open in a new window
 #ballerina run Client.bal -e port=$port -e ip="http://localhost" -e id=$id -e api=$api -e hosts=$lastHost
-gnome-terminal -e "ballerina run Client.bal -e port=$port -e ip="http://localhost" -e id=$id -e api=$api -e hosts=$lastHost"
-#gnome-terminal -e echo "helloo"
-#echo "Helloo";  
+gnome-terminal -e "ballerina run member.bal -e port=$port -e ip="http://localhost" -e id=$counter -e api=$api -e hosts=$lastHost"
 lastHost=$lastHost","$urlWithPort
     ((port++))
     ((counter++))
     ((api++))
 done
+gnome-terminal -e "ballerina run put_bench.bal -e port=$port -e ip="http://localhost" -e id=$counter -e api=$api -e hosts=$lastHost"
 
 # myString="abcd"
 # myString="${myString:1}"

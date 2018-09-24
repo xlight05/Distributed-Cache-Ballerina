@@ -184,6 +184,48 @@ service<http:Service> api bind listner {
         caller->respond(res) but { error e => log:printError(
                                                   "Error sending response", err = e) };
     }
+
+    @http:ResourceConfig {
+        methods: ["DELETE"],
+        path: "/data/clear"
+    }
+    clear(endpoint caller, http:Request req) {
+
+        http:Response res = new;
+        cacheEntries.clear();
+        json testJson = { "message": "Node entries Removed", "status": 200 };
+
+        res.setJsonPayload(testJson);
+        caller->respond(res) but { error e => log:printError(
+                                                  "Error sending response", err = e) };
+
+    }
+
+    @http:ResourceConfig {
+        methods: ["DELETE"],
+        path: "/data/evict"
+    }
+    evictData(endpoint caller, http:Request req) {
+        json|error jsonData = req.getJsonPayload();
+        string[] strArr;
+        match jsonData {
+            json js => {
+                strArr = check <string[]>js;
+            }
+            error err => {
+                log:printWarn("Error recieving json");
+            }
+        }
+        foreach i in strArr {
+            _ = cacheEntries.remove(i);
+            log:printInfo(i + " Replica Evicted");
+        }
+        http:Response res = new;
+        json testJson = { "message": "Node entries evicted", "status": 200 };
+        res.setJsonPayload(untaint testJson, contentType = "application/json");
+        caller->respond(res) but { error e => log:printError(
+                                                  "Error sending response", err = e) };
+    }
 }
 
 
