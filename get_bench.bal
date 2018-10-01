@@ -5,22 +5,13 @@ import ballerina/io;
 import ballerina/time;
 function main(string... args) {
     _ = cache:initNodeConfig();
-    int avgNanoPerRecord1000 = repeatRun(1000, 3);
-    //int avgNanoPerRecord100000 = repeatRun(100000,3);
-    //int avgNanoPerRecord1000000 = repeatRun(1000000);
+    int avgNanoPerRecord1000000 = runTest(1000000);
+    io:println(avgNanoPerRecord1000000);
+    writeToJson(1000000, avgNanoPerRecord1000000, false,1000000,0.1,7,1,1,3);
 
-    writeToJson(1000, 3, avgNanoPerRecord1000);
 }
 
 
-function repeatRun(int entryCount, int runCount) returns int {
-    int sum;
-    foreach i in 1...runCount {
-        int nanoPerEntry = runTest(entryCount);
-        sum += nanoPerEntry;
-    }
-    return (sum / runCount);
-}
 
 function runTest(int entryCount) returns int {
     string randomCache = randomString();
@@ -57,8 +48,8 @@ function randomString() returns string {
     return randomStr;
 }
 
-function writeToJson(int entryCount, int repeat, int timeTaken) {
-    string filePath = "./reports/put.json";
+function writeToJson(int entryCount, int timeTaken, boolean localCacheEnabled,int capacity,float evictionFactor,int partitions,int replicationFact,int iteration,int nodes) {
+    string filePath = "./reports/get.json";
     json existingContent;
     try {
         existingContent = read(filePath);
@@ -72,8 +63,13 @@ function writeToJson(int entryCount, int repeat, int timeTaken) {
     json newContent = {
         "currentTime": currentTime,
         "entryCount": entryCount,
-        "repeat": repeat,
-        "timeTaken": timeTaken
+        "timeTaken": timeTaken,
+        "localCache": localCacheEnabled,
+        "capacity":capacity,
+        "evictionFactor":evictionFactor,
+        "partitions":partitions,
+        "replicationFact":replicationFact,
+        "iteration":iteration
     };
 
     existingContent[lengthof existingContent] = newContent;

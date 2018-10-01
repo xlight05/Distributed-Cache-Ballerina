@@ -7,44 +7,13 @@ import ballerina/runtime;
 import ballerina/time;
 function main(string... args) {
     _ = cache:initNodeConfig();
-    int repeat = 5;
-    //int avgNanoPerRecord1000 = repeatRun(10000,repeat);
-    //int avgNanoPerRecord100000 = repeatRun(100000,repeat);
-    int avgNanoPerRecord1000000 = repeatRun(1000000, repeat);
-
-    //io:println(avgNanoPerRecord1000);
-    //io:println(avgNanoPerRecord100000);
+    int avgNanoPerRecord1000000 = runTest(1000000);
     io:println(avgNanoPerRecord1000000);
-    //write to json
-    //writeToJson(10000, repeat, avgNanoPerRecord1000,false);
-    //writeToJson(100000, repeat, avgNanoPerRecord100000,false);
-    writeToJson(1000000, repeat, avgNanoPerRecord1000000, false);
+    writeToJson(1000000, avgNanoPerRecord1000000, false,1000000,0.1,7,1,1,3);
 
 
 }
-function writeToJson(int entryCount, int repeat, int timeTaken, boolean localCacheEnabled) {
-    string filePath = "./reports/put.json";
-    json existingContent;
-    try {
-        existingContent = read(filePath);
-    }
-    catch (error e) {
-        //content = [];
-    }
 
-    time:Time time = time:currentTime();
-    int currentTime = time.time;
-    json newContent = {
-        "currentTime": currentTime,
-        "entryCount": entryCount,
-        "repeat": repeat,
-        "timeTaken": timeTaken,
-        "localCache": localCacheEnabled
-    };
-
-    existingContent[lengthof existingContent] = newContent;
-    write(existingContent, filePath);
-}
 
 function close(io:CharacterChannel characterChannel) {
 
@@ -92,14 +61,14 @@ function read(string path) returns json {
 }
 
 
-function repeatRun(int entryCount, int runCount) returns int {
-    int sum;
-    foreach i in 1...runCount {
-        int nanoPerEntry = runTest(entryCount);
-        sum += nanoPerEntry;
-    }
-    return (sum / runCount);
-}
+//function repeatRun(int entryCount, int runCount) returns int {
+//    int sum;
+//    foreach i in 1...runCount {
+//        int nanoPerEntry = runTest(entryCount);
+//        sum += nanoPerEntry;
+//    }
+//    return (sum / runCount);
+//}
 
 function runTest(int entryCount) returns int {
     string randomCache = randomString();

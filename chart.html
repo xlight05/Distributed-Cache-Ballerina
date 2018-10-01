@@ -1,0 +1,90 @@
+<html>
+<head>
+    <title>Cache Put Benchmark</title>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js">
+    </script>
+    <script type="text/javascript">
+        google.charts.load('current', {packages: ['corechart']});
+    </script>
+</head>
+
+<body>
+<div id="container" style="width: 550px; height: 400px; margin: 0 auto">
+</div>
+<script language="JavaScript">
+    function drawChart() {
+
+        var jsonData = loadJSON("reports/test.json");
+        var iterationArr = [];
+        var chartRows = [
+            ['iteration', 'Nanoseconds per request']
+        ];
+
+        for (var i in jsonData) {
+            if ((!iterationArr.includes(jsonData[i].iteration))&&jsonData[i].iteration != null) {
+                //console.log(jsonData[i].iteration);
+                iterationArr.push(jsonData[i].iteration);
+            }
+        }
+
+        for (var i in iterationArr) {
+            var avg = getAverageTime(iterationArr[i], jsonData);
+            var row = [iterationArr[i].toString(), avg];
+            chartRows.push(row);
+        }
+
+        // Define the chart to be drawn.
+        var data = google.visualization.arrayToDataTable(chartRows);
+
+        var options = {title: 'Nanoseconds per request'};
+
+        // Instantiate and draw the chart.
+        var chart = new google.visualization.BarChart(document.getElementById('container'));
+        chart.draw(data, options);
+    }
+
+    google.charts.setOnLoadCallback(drawChart);
+
+    function loadTextFileAjaxSync(filePath, mimeType) {
+        var xmlhttp = new XMLHttpRequest();
+        xmlhttp.open("GET", filePath, false);
+        if (mimeType != null) {
+            if (xmlhttp.overrideMimeType) {
+                xmlhttp.overrideMimeType(mimeType);
+            }
+        }
+        xmlhttp.send();
+        if (xmlhttp.status == 200) {
+            return xmlhttp.responseText;
+        }
+        else {
+            // TODO Throw exception
+            return null;
+        }
+    }
+
+    function loadJSON(filePath) {
+        // Load json file;
+        var json = loadTextFileAjaxSync(filePath, "application/json");
+        // Parse json
+        return JSON.parse(json);
+    }
+
+
+    function getAverageTime(iteration, data) {
+        var count = 0;
+        var sum = 0;
+        for (var i in data) {
+            if (iteration = data[i].iteration) {
+                var id = data[i].timeTaken;
+                count++;
+                sum += id;
+            }
+        }
+        return (sum / count);
+    }
+
+
+</script>
+</body>
+</html>

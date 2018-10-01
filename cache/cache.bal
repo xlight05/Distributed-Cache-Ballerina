@@ -36,15 +36,14 @@ type CacheEntry record {
     int timesAccessed;
     int createdTime;
     boolean replica;
-};
-//
+}; 
 documentation { Map which stores all of the caches. }
 map<Cache> cacheMap;
 string currentIP = config:getAsString("ip", default = "http://localhost");
 int currentPort = config:getAsInt("port", default = 7000);
-int replicationFact = 1;
-float cacheEvictionFactor = 0.1;
-int CacheCapacity = 10;
+int replicationFact = 1; // Per Node
+float cacheEvictionFactor = 0.1; //Per Node
+int CacheCapacity = 1000000; //Per Node
 boolean isLocalCacheEnabled = false;
 //boolean init = initNodeConfig();
 
