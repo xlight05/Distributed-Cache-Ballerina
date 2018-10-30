@@ -16,12 +16,7 @@
 
 import ballerina/io;
 
-documentation {
-    Returns sorted int array after performing merge sort.
 
-    P{{unsortedArray}} The unsorted int array
-    R{{}} The sorted int array
-}
 public function mergeSort(int[] unsortedArray) returns @untainted int[] {
     sort(unsortedArray, 0, lengthof unsortedArray - 1);
     return unsortedArray;

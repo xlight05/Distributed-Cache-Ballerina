@@ -11,24 +11,25 @@ endpoint http:Listener listner {
     port: config:getAsInt("port", default = 7000)
 };
 
-documentation {
-    Represents a node in the cluster
+# Represents a node in the cluster
+#
+# + id - Node ID
+# + ip - IP of the node
 
-    F{{id}} Node ID
-    F{{ip}} IP of the node
-}
 type Node record {
     string id;
     string ip;
 };
-documentation {
-    Represents a cache entry.
 
-    F{{value}} cache value
-    F{{lastAccessedTime}} last accessed time in ms of this value which is used to remove LRU cached values
-    F{{timesAccessed}} records the times entry retrived by the user
-    F{{createdTime}} records the created time of the entry
-}
+#    Represents a cache entry.
+#
+# + value - cache value
+# + key - key of the entry
+# + lastAccessedTime - last accessed time in ms of this value which is used to remove LRU cached values
+# + timesAccessed - records the times entry retrived by the user
+# + createdTime - records the created time of the entry 
+# + replica - checks if a record is a replica
+
 type CacheEntry record {
     any value;
     string key;
@@ -37,7 +38,8 @@ type CacheEntry record {
     int createdTime;
     boolean replica;
 }; 
-documentation { Map which stores all of the caches. }
+// Map which stores all of the caches.
+
 map<Cache> cacheMap;
 string currentIP = config:getAsString("ip", default = "http://localhost");
 int currentPort = config:getAsInt("port", default = 7000);
@@ -46,8 +48,7 @@ float cacheEvictionFactor = 0.1; //Per Node
 int CacheCapacity = 1000000; //Per Node
 boolean isLocalCacheEnabled = false;
 //boolean init = initNodeConfig();
-
-documentation { Object contains details of the current Node }
+// Object contains details of the current Node
 Node currentNode = {
     id: config:getAsString("id", default = "1"),
     ip: config:getAsString("ip", default = "http://localhost") + ":" + config:getAsInt("port", default = 7000)
@@ -60,10 +61,8 @@ public function initNodeConfig() returns boolean {
     string[] configNodeList = hosts.split(",");
     io:println(configNodeList);
     if (configNodeList[0] == ""){
-        io:
-        println("In Create");
+        io:println("In Create");
         createCluster();
-
     } else {
         io:println("In Join");
         joinCluster(configNodeList);
@@ -72,15 +71,15 @@ public function initNodeConfig() returns boolean {
     return true;
 }
 
-documentation { Allows uesrs to create the cluster }
+#Allows uesrs to create the cluster
 public function createCluster() {
     json j = addServer(currentNode);
 }
 
-documentation {
-    Allows uesrs to join the cluster
-     P{{nodeIPs}} ips of the nodes in the cluster
-}
+
+#    Allows uesrs to join the cluster
+#    + nodeIPs - ips of the nodes in the cluster
+
 public function joinCluster(string[] nodeIPs) {
 
     string currentIpWithPort = currentNode.ip;
@@ -125,20 +124,20 @@ public function joinCluster(string[] nodeIPs) {
 
 }
 
-documentation {
-    Allows users to create a cache object
-    P{{name}} name of the cache object
-}
+
+# Allows users to create a cache object
+# + name - name of the cache object
+
 public function createCache(string name) {
     cacheMap[name] = new Cache(name);
     log:printInfo("Cache Created " + name);
 }
 
-documentation {
-    Allows users to create a cache object
-    P{{name}} name of the cache object
-    R{{}}Cache object associated with the given name
-}
+# Allows users to create a cache object
+#
+# + name - name of the cache object
+# + return - Cache object associated with the given name
+
 public function getCache(string name) returns Cache? {
 
     foreach node in nodeList {
@@ -175,9 +174,9 @@ public function getCache(string name) returns Cache? {
 }
 
 
-documentation { Represents a cache. }
+# Represents a cache.
 public type Cache object {
-    public string name;
+    string name;
     LocalCache nearCache = new(capacity = 2, evictionFactor = 0.5);
     string cacheCfg;
 
@@ -201,12 +200,12 @@ public type Cache object {
         }
     }
 
-    documentation {
-        Adds the given key, value pair to the provided cache.It will be stored in a appropirate node in the cluster
 
-        P{{key}} value which should be used as the key
-        P{{value}} value to be cached
-    }
+    # Adds the given key, value pair to the provided cache.It will be stored in a appropirate node in the cluster
+    #
+    # + key - value which should be used as the key
+    # + value - value to be cached
+
     public function put(string key, any value) {
         //Adding in to nearCache for quick retrival
         if (isLocalCacheEnabled){
@@ -296,13 +295,10 @@ public type Cache object {
     }
 
 
-    documentation {
-        Returns the cached value associated with the given key. If the provided cache key is not found in the cluster, ()
-        will be returned.
-
-        R{{key}} key which is used to retrieve the cached value
-        R{{}}The cached value associated with the given key
-    }
+# Returns the cached value associated with the given key. If the provided cache key is not found in the cluster, () will be returned.
+#
+# + key - key which is used to retrieve the cached value
+# + return  -The cached value associated with the given key
     public function get(string key) returns any? {
         if (isLocalCacheEnabled){
             if (nearCache.hasKey(key)){

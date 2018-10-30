@@ -16,10 +16,10 @@ public type ConsistentHash object {
 
     }
 
-    documentation {
-    Adds a node to the hash ring
-    P{{nodeName}} name of the node (identifier)
-    }
+    //documentation {
+    //Adds a node to the hash ring
+    //P{{nodeName}} name of the node (identifier)
+    //}
     public function add(string nodeName) {
         int i = 0;
         //creates replica nodes (virtual nodes)
@@ -45,11 +45,11 @@ public type ConsistentHash object {
         sortedHashes = sortArr;
     }
 
-    documentation {
-    Used to identify which node is repnsible for handling the data for the key
-    P{{key}} Key of the data or node identifier
-    R{{}} Responsible node for the given key
-    }
+    //documentation {
+    //Used to identify which node is repnsible for handling the data for the key
+    //P{{key}} Key of the data or node identifier
+    //R{{}} Responsible node for the given key
+    //}
     public function get(string key) returns string {
         int enteredKeyHash = getCrc32HashDecimal(key);
         int ind = 0;
@@ -57,8 +57,7 @@ public type ConsistentHash object {
         int i = 0;
         int j = lengthof sortedHashes;
         while (i < j) {
-
-            int h = <int>math:floor((i + j) / 2); //binary search
+            int h = <int>math:floor((<float>(i + j) / 2)); //binary search
 
             if !(sortedHashes[h] > enteredKeyHash) {
                 i = h + 1; // preserves f(i-1) == false
@@ -92,7 +91,7 @@ public type ConsistentHash object {
         while (i < hex.length()) {
             string c = hex.substring(i, i + 1);
             int j = hexRep.indexOf(c);
-            sum = <int>(sum + (math:pow(16, counter)) * j);
+            sum = <int>(sum + (math:pow(16.0, <float>counter)) * j);
             counter--;
             i++;
         }

@@ -5,7 +5,7 @@ import ballerina/log;
 import ballerina/http;
 import ballerina/config;
 
-function main(string... args) {
+public function main(string... args) {
 
     //cache:createCluster();
     _ = cache:initNodeConfig();

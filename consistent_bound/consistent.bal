@@ -51,7 +51,7 @@ public type Consistent object {
             int j = lengthof sortedSet;
             while (i < j) {
 
-                int h = <int>math:floor((i + j) / 2);
+                int h = <int>math:floor(<float>((i + j) / 2));
                 //binary search
 
                 if !(sortedSet[h] >= key) {
@@ -93,15 +93,15 @@ public type Consistent object {
                     io:println("Fked");
                 }
             }
-            float loadT = 0;
+            float loadT = 0.0;
             var loadVar = loadsTemp[member];
             match loadVar {
                 float x => {
                     loadT = x;
                 }
                 () => {
-                    loadsTemp[member] = 0;
-                    loadT = 0;
+                    loadsTemp[member] = 0.0;
+                    loadT = 0.0;
                 }
             }
             if (loadT + 1 <= avgLoad){
@@ -159,7 +159,7 @@ public type Consistent object {
         while (i < hex.length()) {
             string c = hex.substring(i, i + 1);
             int j = hexRep.indexOf(c);
-            sum = <int>(sum + (math:pow(16, counter)) * j);
+            sum = <int>(sum + (math:pow(16.0, <float>counter)) * j);
             counter--;
             i++;
         }

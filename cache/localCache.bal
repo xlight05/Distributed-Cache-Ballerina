@@ -2,18 +2,10 @@ import ballerina/system;
 import ballerina/task;
 import ballerina/time;
 
-documentation {
-    Represents a cache entry.
-
-    F{{value}} cache value
-    F{{lastAccessedTime}} last accessed time in ms of this value which is used to remove LRU cached values
-}
 type LocalCacheEntry record {
     any value;
     int lastAccessedTime;
 };
-
-documentation { Represents a cache. }
 public type LocalCache object {
 
     private int capacity;
@@ -33,30 +25,15 @@ public type LocalCache object {
         }
     }
 
-    documentation {
-        Checks whether the given key has an accociated cache value.
-
-        R{{}} True if the given key has an associated value, false otherwise.
-    }
     public function hasKey(string key) returns (boolean) {
         return entries.hasKey(key);
     }
 
-    documentation {
-        Returns the size of the cache.
-
-        R{{}} The size of the cache
-    }
     public function size() returns (int) {
         return lengthof entries;
     }
 
-    documentation {
-        Adds the given key, value pair to the provided cache.
 
-        P{{key}} value which should be used as the key
-        P{{value}} value to be cached
-    }
     public function put(string key, any value) {
         // We need to synchronize this process otherwise concurrecy might cause issues.
         lock {
@@ -74,7 +51,6 @@ public type LocalCache object {
         }
     }
 
-    documentation { Evicts the cache when cache is full. }
     function evict() {
         int maxCapacity = capacity;
         float ef = evictionFactor;
@@ -88,13 +64,7 @@ public type LocalCache object {
         }
     }
 
-    documentation {
-        Returns the cached value associated with the given key. If the provided cache key is not found, ()
-        will be returned.
 
-        R{{key}} key which is used to retrieve the cached value
-        R{{}}The cached value associated with the given key
-    }
     public function get(string key) returns any? {
         // Check whether the requested cache is available.
         if (!hasKey(key)){
@@ -115,31 +85,17 @@ public type LocalCache object {
         }
     }
 
-    documentation {
-        Removes a cached value from a cache.
 
-        R{{key}} key of the cache entry which needs to be removed
-    }
     public function remove(string key) {
         // Cache might already be removed by the cache clearing task. So no need to check the return value.
         _ = entries.remove(key);
     }
 
-    documentation {
-        Returns all keys from current cache.
 
-        R{{}} all keys
-    }
     public function keys() returns string[] {
         return entries.keys();
     }
 
-    documentation {
-        Returns the key of the Least Recently Used cache entry. This is used to remove cache entries if the cache is
-        full.
-
-        R{{}} number of keys to be evicted
-    }
     function getLRUCacheKeys(int numberOfKeysToEvict) returns (string[]) {
         // Create new arrays to hold keys to be removed and hold the corresponding timestamps.
         string[] cacheKeysToBeRemoved = [];
@@ -164,7 +120,6 @@ public type LocalCache object {
     }
 };
 
-documentation { Utility function to identify which cache entries should be evicted. }
 function checkAndAdd(int numberOfKeysToEvict, string[] cacheKeys, int[] timestamps, string key, int lastAccessTime) {
     string myKey = key;
     int myLastAccessTime = lastAccessTime;

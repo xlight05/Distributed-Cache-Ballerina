@@ -1,0 +1,39 @@
+syntax = "proto3";
+import "google/protobuf/wrappers.proto";
+service raft {
+		rpc voteResponseRPC(VoteRequest) returns (VoteResponse);
+		rpc appendEntriesRPC(AppendEntries) returns (AppendEntriesResponse);
+		rpc addServerRPC(google.protobuf.StringValue) returns (ConfigChangeResponse);
+		rpc clientRequestRPC(google.protobuf.StringValue) returns (ConfigChangeResponse);
+}
+message VoteRequest {
+	int64 term = 1;
+	string candidateID = 2;
+	int64 lastLogIndex = 3;
+	int64 lastLogTerm = 4;
+}
+message VoteResponse {
+	bool granted = 1;
+	int64 term = 2;
+}
+message AppendEntries {
+	int64 term = 1;
+	string leaderID = 2;
+	int64 prevLogIndex = 3;
+	int64 prevLogTerm = 4;
+	repeated LogEntry entries = 5;
+	int64 leaderCommit = 6;
+}
+message LogEntry {
+	int64 term = 1;
+	string command = 2;
+}
+message AppendEntriesResponse {
+	int64 term = 1;
+	bool sucess = 2;
+	int64 followerMatchIndex = 3;
+}
+message ConfigChangeResponse {
+	bool sucess = 1;
+	string leaderHint = 2;
+}
