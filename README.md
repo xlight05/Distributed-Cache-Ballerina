@@ -13,8 +13,8 @@
 ### Todos
 
 - Refactor code,Documentation
-- Support 0.982.0
-- Implement Raft protocol for Leader election,heartbeat,consensus
+- Merge clientMap in node.bal with raft.
+- Node add / remove function
 - Performance analysis
 
 

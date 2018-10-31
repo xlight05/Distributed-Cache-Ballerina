@@ -25,36 +25,37 @@ function setReplicationFactor() {
 }
 
 function addServer(Node node) returns json {
-    nodeList[lengthof nodeList] = node;
     // Adds node to node array
     hashRing.add(node.ip);
     //Adds node ip to hash ringa
     setReplicationFactor();
     http:Client client;
-    http:ClientEndpointConfig cc = { url: node.ip };
+    http:ClientEndpointConfig cc = {url: node.ip};
     client.init(cc);
     clientMap[node.ip] = client;
-    json jsonNodeList = check <json>nodeList;
+    string [] nodeIpArr;
     log:printInfo("New Node Added " + node.ip);
     //TODO change redistribution in to seperate method
     json changedJson = getChangedEntries();
     // Gets changed cache entries of the node
-    foreach nodeItem in nodeList {
-        if (nodeItem.ip == currentNode.ip){ //Ignore if its the current node
+    foreach nodeItem in clientMap {
+        string nodeIP = nodeItem.config.url;
+        nodeIpArr[lengthof nodeIpArr]= nodeItem.config.url;
+        if (nodeIP == currentNode.ip){ //Ignore if its the current node
             continue;
         }
 
-        http:ClientEndpointConfig config = { url: nodeItem.ip };
+        http:ClientEndpointConfig config = { url: nodeIP };
         nodeEndpoint.init(config);
 
-        var res = nodeEndpoint->post("/data/multiple/store/", untaint changedJson[nodeItem.ip]);
+        var res = nodeEndpoint->post("/data/multiple/store/", untaint changedJson[nodeIP]);
         //sends changed entries to correct node
         match res {
             http:Response resp => {
                 var msg = resp.getJsonPayload();
                 match msg {
                     json jsonPayload => {
-                        log:printInfo("Entries sent to " + nodeItem.ip);
+                        log:printInfo("Entries sent to " + nodeIP);
                     }
                     error err => {
                         log:printError(err.message, err = err);
@@ -66,14 +67,15 @@ function addServer(Node node) returns json {
             }
         }
     }
+    json jsonNodeList = check <json>nodeIpArr;
     return jsonNodeList;
 }
 
 //Removes item from server
 function removeServer(string ip) returns boolean {
     boolean found = false;
-    foreach k, v in nodeList{
-        if (v.ip == ip){
+    foreach i in clientMap{
+        if (i.config.url == ip){
             //remove node from array
             found = true;
         }
@@ -85,8 +87,8 @@ function removeServer(string ip) returns boolean {
 
 //Adds servers in node list to hash ring
 function setServers() {
-    foreach item in nodeList {
-        hashRing.add(item.ip);
+    foreach item in clientMap {
+        hashRing.add(item.config.url);
     }
 }
 

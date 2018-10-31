@@ -47,9 +47,9 @@ function getChangedEntries() returns json {
     json entries;
     string currentNodeIP = currentNode.ip;
     //Node catagorize
-    foreach node in nodeList {
-        if (node.ip != currentNodeIP){
-            entries[node.ip] = [];
+    foreach node in clientMap {
+        if (node.config.url != currentNodeIP){
+            entries[node.config.url] = [];
         }
     }
     foreach key, value in cacheEntries {
@@ -121,9 +121,9 @@ function evictEntries() {
     json entries;
     string currentNodeIP = currentNode.ip;
     //Node catagorize
-    foreach node in nodeList {
-        if (node.ip != currentNodeIP){
-            entries[node.ip] = [];
+    foreach node in clientMap{
+        if (node.config.url != currentNodeIP){
+            entries[node.config.url] = [];
         }
     }
     foreach c in cacheKeysToBeRemoved {
@@ -142,12 +142,12 @@ function evictEntries() {
         log:printInfo(c + " Entry Evicted");
     }
     io:println(entries);
-    foreach nodeItem in nodeList {
-        if (nodeItem.ip == currentNode.ip){ //Ignore if its the current node
+    foreach nodeItem in clientMap {
+        if (nodeItem.config.url == currentNode.ip){ //Ignore if its the current node
             continue;
         }
 
-        http:Client? clientNode = clientMap[nodeItem.ip];
+        http:Client? clientNode = clientMap[nodeItem.config.url];
         http:Client client;
         match clientNode {
             http:Client c => {
@@ -159,14 +159,14 @@ function evictEntries() {
         }
         nodeEndpoint = client;
 
-        var res = nodeEndpoint->delete("/data/evict", untaint entries[nodeItem.ip]);
+        var res = nodeEndpoint->delete("/data/evict", untaint entries[nodeItem.config.url]);
         //sends changed entries to correct node
         match res {
             http:Response resp => {
                 var msg = resp.getJsonPayload();
                 match msg {
                     json jsonPayload => {
-                        log:printInfo("Entries sent to " + nodeItem.ip);
+                        log:printInfo("Entries sent to " + nodeItem.config.url);
                     }
                     error err => {
                         log:printError(err.message, err = err);

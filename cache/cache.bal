@@ -73,7 +73,7 @@ public function initNodeConfig() returns boolean {
 
 #Allows uesrs to create the cluster
 public function createCluster() {
-    json j = addServer(currentNode);
+    _ = addServer(currentNode);
 }
 
 
@@ -84,7 +84,8 @@ public function joinCluster(string[] nodeIPs) {
 
     string currentIpWithPort = currentNode.ip;
     //server list json init
-    json serverList = { "0": check <json>currentNode };
+    //json serverList = { "0": check <json>currentNode };
+    string [] serverListArr = [currentNode.ip];
     //sending requests for existing nodes
     foreach node in nodeIPs {
         //changing the url of client endpoint
@@ -99,7 +100,7 @@ public function joinCluster(string[] nodeIPs) {
                 var msg = resp.getJsonPayload();
                 match msg {
                     json jsonPayload => {
-                        serverList = jsonPayload;
+                        serverListArr = check<string []>jsonPayload;
                     }
                     error err => {
                         log:printError(err.message, err = err);
@@ -112,12 +113,11 @@ public function joinCluster(string[] nodeIPs) {
         }
     }
     //Setting local node list
-    nodeList = untaint check <Node[]>serverList;
-    foreach item in nodeList {
+    foreach item in serverListArr{
         http:Client client;
-        http:ClientEndpointConfig cc = { url: item.ip };
+        http:ClientEndpointConfig cc = { url: item };
         client.init(cc);
-        clientMap[item.ip] = client;
+        clientMap[item] = client;
     }
     setServers();
     log:printInfo("Joined the cluster");
@@ -140,10 +140,10 @@ public function createCache(string name) {
 
 public function getCache(string name) returns Cache? {
 
-    foreach node in nodeList {
+    foreach node in clientMap {
+        nodeEndpoint= node;
         //changing the url of client endpoint
-        http:ClientEndpointConfig cfg = { url: node.ip };
-        nodeEndpoint.init(cfg);
+
         var response = nodeEndpoint->get("/cache/get/" + name);
 
         match response {
@@ -157,7 +157,7 @@ public function getCache(string name) returns Cache? {
                             log:printInfo("Cache Found- " + name);
                             return cacheObj;
                         } else {
-                            log:printWarn(name + " Cache not found- in " + node.ip);
+                            log:printWarn(name + " Cache not found- in " + node.config.url);
                         }
                     }
                     error err => {
@@ -370,18 +370,8 @@ public type Cache object {
         io:println();
     }
     public function clearAllEntries() {
-        foreach node in nodeList {
-            http:Client? clientNode = clientMap[node.ip];
-            http:Client client;
-            match clientNode {
-                http:Client c => {
-                    client = c;
-                }
-                () => {
-                    log:printError("Client not found");
-                }
-            }
-            nodeEndpoint = client;
+        foreach node in clientMap {
+            nodeEndpoint = node;
             json testJson = { "message": "Test JSON", "status": 200 };
             var response = nodeEndpoint->delete("/data/clear", testJson);
 
