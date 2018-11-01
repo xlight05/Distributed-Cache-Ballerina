@@ -7,9 +7,6 @@ import ballerina/config;
 endpoint http:Client nodeEndpoint {
     url: "http://localhost:" + config:getAsString("port", default = "7000")
 };
-endpoint http:Listener listner {
-    port: config:getAsInt("port", default = 7000)
-};
 
 # Represents a node in the cluster
 #
@@ -49,10 +46,6 @@ int CacheCapacity = 1000000; //Per Node
 boolean isLocalCacheEnabled = false;
 //boolean init = initNodeConfig();
 // Object contains details of the current Node
-Node currentNode = {
-    id: config:getAsString("id", default = "1"),
-    ip: config:getAsString("ip", default = "http://localhost") + ":" + config:getAsInt("port", default = 7000)
-};
 
 
 public function initNodeConfig() returns boolean {
@@ -66,14 +59,15 @@ public function initNodeConfig() returns boolean {
     } else {
         io:println("In Join");
         joinCluster(configNodeList);
-
     }
     return true;
 }
 
 #Allows uesrs to create the cluster
 public function createCluster() {
-    _ = addServer(currentNode);
+    //_ = addServer(currentNode);
+    startRaft();
+
 }
 
 
@@ -81,47 +75,70 @@ public function createCluster() {
 #    + nodeIPs - ips of the nodes in the cluster
 
 public function joinCluster(string[] nodeIPs) {
-
-    string currentIpWithPort = currentNode.ip;
-    //server list json init
-    //json serverList = { "0": check <json>currentNode };
-    string [] serverListArr = [currentNode.ip];
-    //sending requests for existing nodes
     foreach node in nodeIPs {
-        //changing the url of client endpoint
-        http:ClientEndpointConfig config = { url: node };
-        nodeEndpoint.init(config);
+        http:Client client;
+        http:ClientEndpointConfig cfg=  {url:node};
+        client.init(cfg);
+        nodeEndpoint = client;
+        var ee = nodeEndpoint->post("/raft/server",currentNode);
+        match ee {
+            http:Response payload => {
+                ConfigChangeResponse result = check <ConfigChangeResponse> check payload.getJsonPayload();
+                if (result.sucess){
+                    joinRaft();
+                    break;
+                }else {
+                    log:printInfo("No "+node +" is not the leader");
+                    string[] leaderIP;
+                    leaderIP[0] = result.leaderHint;
 
-        json serverDetailsJSON = check <json>currentNode;
-        var response = nodeEndpoint->post("/node/add", untaint serverDetailsJSON);
-
-        match response {
-            http:Response resp => {
-                var msg = resp.getJsonPayload();
-                match msg {
-                    json jsonPayload => {
-                        serverListArr = check<string []>jsonPayload;
-                    }
-                    error err => {
-                        log:printError(err.message, err = err);
-                    }
+                    joinCluster(leaderIP);
                 }
             }
             error err => {
-                log:printError(err.message, err = err);
+                log:printInfo ("not recieved");
             }
         }
     }
-    //Setting local node list
-    foreach item in serverListArr{
-        http:Client client;
-        http:ClientEndpointConfig cc = { url: item };
-        client.init(cc);
-        clientMap[item] = client;
-    }
-    setServers();
-    log:printInfo("Joined the cluster");
 
+    //string currentIpWithPort = currentNode.ip;
+    ////server list json init
+    ////json serverList = { "0": check <json>currentNode };
+    //string [] serverListArr = [currentNode.ip];
+    ////sending requests for existing nodes
+    //foreach node in nodeIPs {
+    //    //changing the url of client endpoint
+    //    http:ClientEndpointConfig config = { url: node };
+    //    nodeEndpoint.init(config);
+    //
+    //    json serverDetailsJSON = <json>currentNode;
+    //    var response = nodeEndpoint->post("/node/add", untaint serverDetailsJSON);
+    //
+    //    match response {
+    //        http:Response resp => {
+    //            var msg = resp.getJsonPayload();
+    //            match msg {
+    //                json jsonPayload => {
+    //                    serverListArr = check<string []>jsonPayload;
+    //                }
+    //                error err => {
+    //                    log:printError(err.message, err = err);
+    //                }
+    //            }
+    //        }
+    //        error err => {
+    //            log:printError(err.message, err = err);
+    //        }
+    //    }
+    //}
+    ////Setting local node list
+    //foreach item in serverListArr{
+    //    http:Client client;
+    //    http:ClientEndpointConfig cc = { url: item };
+    //    client.init(cc);
+    //    clientMap[item] = client;
+    //}
+    //setServers();
 }
 
 
@@ -293,8 +310,6 @@ public type Cache object {
             }
         }
     }
-
-
 # Returns the cached value associated with the given key. If the provided cache key is not found in the cluster, () will be returned.
 #
 # + key - key which is used to retrieve the cached value

@@ -4,31 +4,32 @@ import ballerina/math;
 import ballerina/config;
 
 
-endpoint http:Client leaderEP {
-    url: config:getAsString("leaderIP", default = "3000")
-};
-
-public function main(string... args) {
-    //io:println ("Raft Starting");
-    //
-    //var ee = leaderEP->post("/server",<json>currentNode);
-    //match ee {
-    //    http:Response payload => {
-    //        ConfigChangeResponse result = check <ConfigChangeResponse> check payload.getJsonPayload();
-    //        grpc:Headers resHeaders;
-    //        if (result.sucess){
-    //            joinRaft();
-    //        }else {
-    //            io:println ("Failed to join :/");
-    //        }
-    //    }
-    //    error err => {
-    //
-    //    }
-    //}
-    io:println(<int>math:ceil(1 / 2.0));
-
-}
+//endpoint http:Client leaderEP {
+//    url: config:getAsString("leaderIP", default = "3000")
+//};
+//
+//public function main(string... args) {
+//
+//    //io:println ("Raft Starting");
+//    //
+//    //var ee = leaderEP->post("/server",<json>currentNode);
+//    //match ee {
+//    //    http:Response payload => {
+//    //        ConfigChangeResponse result = check <ConfigChangeResponse> check payload.getJsonPayload();
+//    //        grpc:Headers resHeaders;
+//    //        if (result.sucess){
+//    //            joinRaft();
+//    //        }else {
+//    //            io:println ("Failed to join :/");
+//    //        }
+//    //    }
+//    //    error err => {
+//    //
+//    //    }
+//    //}
+//    io:println(<int>math:ceil(3 / 2.0));
+//
+//}
 
 //public function main(string... args) {
 //    io:println ("Raft Starting");

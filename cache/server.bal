@@ -7,7 +7,7 @@ import ballerina/http;
 //endpoint grpc:Listener listener {
 //    host: "localhost",
 //    port: config:getAsInt("port", default = 7000)
-//};
+//};listener listner
 endpoint http:Listener listener {
     port: config:getAsInt("port", default = 7000)
 };
@@ -52,7 +52,7 @@ endpoint http:Listener listener {
 //
 //AppendEntries(term, leaderID, prevLogIndex, prevLogTerm, entries[], leaderCommit)
 //-> (term, conflictIndex, conflictTerm, success)
-@http:ServiceConfig { basePath: "/" }
+@http:ServiceConfig { basePath: "/raft" }
 service<http:Service> raft bind listener {
     //Internal
 
@@ -61,14 +61,14 @@ service<http:Service> raft bind listener {
         path: "/vote"
     }
     voteResponseRPC(endpoint client, http:Request request) {
-        io:println("Before responding to vote");
-        printStats();
+        //io:println("Before responding to vote");
+        //printStats();
         json jsonPayload = check request.getJsonPayload();
         VoteRequest voteReq = check <VoteRequest>jsonPayload;
         log:printInfo("Vote request came from " + voteReq.candidateID);
         boolean granted = voteResponseHandle(voteReq);
         VoteResponse res = { granted: granted, term: currentTerm };
-        io:println(res);
+        log:printInfo("Vote status for " + voteReq.candidateID+" is "+res.granted);
         http:Response response;
         response.setJsonPayload(check <json>res);
 
@@ -81,15 +81,14 @@ service<http:Service> raft bind listener {
         path: "/append"
     }
     appendEntriesRPC(endpoint client, http:Request request) {
-        io:println("Before respondin to append RPC");
-        io:println(printStats());
+        //io:println("Before respondin to append RPC");
+        //io:println(printStats());
         json jsonPayload = check request.getJsonPayload();
         AppendEntries appendEntry = check <AppendEntries>jsonPayload;
-        log:printInfo("AppendRPC request came from " + appendEntry.leaderID);
         AppendEntriesResponse res = heartbeatHandle(appendEntry);
-        io:println("After respondin to append RPC");
-        io:println(printStats());
-        io:println(res);
+        //io:println("After respondin to append RPC");
+        //io:println(printStats());
+        //io:println(res);
         http:Response response;
         response.setJsonPayload(untaint check <json>res);
 
@@ -105,7 +104,7 @@ service<http:Service> raft bind listener {
     }
     addServerRPC(endpoint client, http:Request request) {
         string ip = check request.getTextPayload();
-        io:println(ip);
+        //io:println(ip);
         ConfigChangeResponse res = addNode(ip);
         http:Response response;
         response.setJsonPayload(check <json>res);
@@ -146,7 +145,7 @@ service<http:Service> raft bind listener {
             }
         }
         //TODO High timeout coz data relocation might be affected
-        var resp = blockingEp->get("/failCheck/");
+        var resp = blockingEp->get("/raft/failCheck/");
         json j1;
         match resp {
             http:Response payload => {
@@ -235,6 +234,7 @@ function heartbeatHandle(AppendEntries appendEntry) returns AppendEntriesRespons
             lastApplied = i;
         }
     }
+    true -> raftReadyChan;
     return res;
 }
 

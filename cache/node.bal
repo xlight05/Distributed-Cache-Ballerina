@@ -7,16 +7,13 @@ import consistent_bound;
 
 consistent_bound:Consistent hashRing = new();
 
-Node[] nodeList;
-map<http:Client> clientMap;
-
 //returns node list as a json
 function getNodeList() returns json {
-    json jsonObj = check <json>nodeList;
-    //foreach k, v in nodeList {
-    //    jsonObj[k] = check v;
-    //}
-    return jsonObj;
+    string [] nodeArr;
+    foreach item in clientMap {
+        nodeArr[lengthof nodeArr]=item.config.url;
+    }
+    return check <json>nodeArr;
 }
 
 function setReplicationFactor() {
@@ -41,7 +38,7 @@ function addServer(Node node) returns json {
     foreach nodeItem in clientMap {
         string nodeIP = nodeItem.config.url;
         nodeIpArr[lengthof nodeIpArr]= nodeItem.config.url;
-        if (nodeIP == currentNode.ip){ //Ignore if its the current node
+        if (nodeIP == currentNode){ //Ignore if its the current node
             continue;
         }
 
@@ -69,6 +66,36 @@ function addServer(Node node) returns json {
     }
     json jsonNodeList = check <json>nodeIpArr;
     return jsonNodeList;
+}
+
+function relocateData() {
+    json changedJson = getChangedEntries();
+    foreach nodeItem in clientMap {
+        string nodeIP = nodeItem.config.url;
+        if (nodeIP == currentNode){ //Ignore if its the current node
+            continue;
+        }
+        nodeEndpoint = nodeItem;
+
+        var res = nodeEndpoint->post("/data/multiple/store/", untaint changedJson[nodeIP]);
+        //sends changed entries to correct node
+        match res {
+            http:Response resp => {
+                var msg = resp.getJsonPayload();
+                match msg {
+                    json jsonPayload => {
+                        log:printInfo("Entries sent to " + nodeIP);
+                    }
+                    error err => {
+                        log:printError(err.message, err = err);
+                    }
+                }
+            }
+            error err => {
+                log:printError(err.message, err = err);
+            }
+        }
+    }
 }
 
 //Removes item from server

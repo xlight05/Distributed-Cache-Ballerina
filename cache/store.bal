@@ -45,7 +45,7 @@ function getAllEntries() returns json {
 //Returns all the changed entries of the node catagorized according to node IP.
 function getChangedEntries() returns json {
     json entries;
-    string currentNodeIP = currentNode.ip;
+    string currentNodeIP = currentNode;
     //Node catagorize
     foreach node in clientMap {
         if (node.config.url != currentNodeIP){
@@ -119,7 +119,7 @@ function evictEntries() {
     //io:println(cacheKeysToBeRemoved);
 
     json entries;
-    string currentNodeIP = currentNode.ip;
+    string currentNodeIP = currentNode;
     //Node catagorize
     foreach node in clientMap{
         if (node.config.url != currentNodeIP){
@@ -143,21 +143,11 @@ function evictEntries() {
     }
     io:println(entries);
     foreach nodeItem in clientMap {
-        if (nodeItem.config.url == currentNode.ip){ //Ignore if its the current node
+        if (nodeItem.config.url == currentNode){ //Ignore if its the current node
             continue;
         }
 
-        http:Client? clientNode = clientMap[nodeItem.config.url];
-        http:Client client;
-        match clientNode {
-            http:Client c => {
-                client = c;
-            }
-            () => {
-                log:printError("Client not found");
-            }
-        }
-        nodeEndpoint = client;
+        nodeEndpoint = nodeItem;
 
         var res = nodeEndpoint->delete("/data/evict", untaint entries[nodeItem.config.url]);
         //sends changed entries to correct node

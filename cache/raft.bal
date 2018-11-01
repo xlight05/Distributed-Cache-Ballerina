@@ -43,6 +43,7 @@ map<int> candVoteLog;
 
 map<int> nextIndex;
 map<int> matchIndex;
+channel<boolean> raftReadyChan;
 
 type SuspectNode record {
     http:Client client;
@@ -79,32 +80,33 @@ public function startRaft() {
     timer = new task:Timer(onTriggerFunction, onErrorFunction,
         interval);
     timer.start();
-    io:println("After starting cluster");
-    printStats();
-
+    //io:println("After starting cluster");
+    //printStats();
+    boolean ready;
+    ready <- raftReadyChan;
 }
 
-function printStats() {
-    io:println("State :" + state);
-    io:println("Current Term :" + currentTerm);
-    io:print("Log :");
-    io:println(log);
-    io:println("Commit Index :" + commitIndex);
-    io:println("Leader Vars ");
-    io:println("Next Index :");
-    foreach k, v in nextIndex {
-        io:println(k + " : " + v);
-    }
-    io:println("Match Index :");
-    foreach k, v in matchIndex {
-        io:println(k + " : " + v);
-    }
-    io:println("Client list :");
-    foreach i in clientMap{
-        io:println(i.config.url);
-    }
-    io:println();
-}
+//function printStats() {
+//    io:println("State :" + state);
+//    io:println("Current Term :" + currentTerm);
+//    io:print("Log :");
+//    io:println(log);
+//    io:println("Commit Index :" + commitIndex);
+//    io:println("Leader Vars ");
+//    io:println("Next Index :");
+//    foreach k, v in nextIndex {
+//        io:println(k + " : " + v);
+//    }
+//    io:println("Match Index :");
+//    foreach k, v in matchIndex {
+//        io:println(k + " : " + v);
+//    }
+//    io:println("Client list :");
+//    foreach i in clientMap{
+//        io:println(i.config.url);
+//    }
+//    io:println();
+//}
 
 public function joinRaft() {
     nextIndex[currentNode] = 1;
@@ -120,8 +122,10 @@ public function joinRaft() {
     timer = new task:Timer(onTriggerFunction, onErrorFunction,
         interval, delay = interval);
     timer.start();
-    io:println("After joining cluster");
-    printStats();
+    //io:println("After joining cluster");
+    //printStats();
+    boolean ready;
+    ready <- raftReadyChan;
 }
 
 function electLeader() {
@@ -137,8 +141,8 @@ function electLeader() {
     state = "Candidate";
     VoteRequest req = { term: currentTerm, candidateID: currentNode, lastLogIndex: (lengthof log) - 1, lastLogTerm: log[(
         lengthof log) - 1].term };
-    io:print("Sending vote Request :");
-    io:println(req);
+    //io:print("Sending vote Request :");
+    //io:println(req);
     future<int> voteResp = start sendVoteRequests(untaint req);
     int voteCount = await voteResp;
     //check if another appendEntry came
@@ -146,7 +150,7 @@ function electLeader() {
         return;
     }
     int quoram = <int>math:ceil(lengthof clientMap / 2.0);
-    io:println(voteCount + " out of " + lengthof clientMap);
+    log:printInfo(voteCount + " out of " + lengthof clientMap);
     //0 for first node
     if (voteCount < quoram) {
         state = "Follower";
@@ -163,9 +167,10 @@ function electLeader() {
         }
         startHeartbeatTimer();
     }
-
-    io:println("After electing Leader");
-    printStats();
+    log:printInfo(currentNode +" is a "+state);
+    true -> raftReadyChan;
+    //io:println("After electing Leader");
+    //printStats();
     return ();
 }
 
@@ -223,7 +228,7 @@ function sendVoteRequests(VoteRequest req) returns int {
 function seperate(http:Client node, VoteRequest req) {
     blockingEp = node;
 
-    var unionResp = blockingEp->post("/vote", check <json>req);
+    var unionResp = blockingEp->post("/raft/vote", check <json>req);
     match unionResp {
         http:Response payload => {
             VoteResponse result = check <VoteResponse>check payload.getJsonPayload();
@@ -251,7 +256,6 @@ function sendHeartbeats() {
     if (state != "Leader") {
         return;
     }
-    log:printInfo("Sending heartbeats");
     future[] heartbeatAsync;
     foreach node in clientMap {
         if (node.config.url == currentNode) {
@@ -264,8 +268,8 @@ function sendHeartbeats() {
         var x = await item;
     }
     commitEntry();
-    io:println("After sending all heartbeats");
-    io:println(printStats());
+    //io:println("After sending all heartbeats");
+    //io:println(printStats());
 }
 
 function heartbeatChannel(http:Client node) {
@@ -292,10 +296,10 @@ function heartbeatChannel(http:Client node) {
         entries: entryList,
         leaderCommit: commitIndex
     };
-    io:println(appendEntry);
-    io:println("To " + node.config.url);
+    //io:println(appendEntry);
+    //io:println("To " + node.config.url);
     blockingEp = node;
-    var heartbeatResp = blockingEp->post("/append", check <json>untaint appendEntry);
+    var heartbeatResp = blockingEp->post("/raft/append", check <json>untaint appendEntry);
     match heartbeatResp {
         http:Response payload => {
             AppendEntriesResponse result = check <AppendEntriesResponse> check payload.getJsonPayload();
@@ -310,7 +314,7 @@ function heartbeatChannel(http:Client node) {
         error err => {
             log:printError("Error from Connector: " + err.message + "\n");
             //commit suspect
-            boolean commited = clientRequest("NSA "+node.config.url);
+            //boolean commited = clientRequest("NSA "+node.config.url);
             //commited?
         }
     }
@@ -326,7 +330,7 @@ function checkSuspectedNode(SuspectNode node) {
             blockingEp = client;
             json req = {ip:node.client.config.url};//change
             //increase timeout
-            var resp = blockingEp->post("/indirect/",req);
+            var resp = blockingEp->post("/raft/indirect/",req);
             match resp {
                 http:Response payload => {
                     json|error result =payload.getJsonPayload();
@@ -522,7 +526,8 @@ function apply(string command) {
         clientMap[ip] = client;
         nextIndex[ip] = 1;
         matchIndex[ip] = 0;
-
+        hashRing.add(ip);
+        relocateData(); // async?  //incositant while catching up a new node?
     }
 
     if (command.substring(0, 3) == "NSA") { //NODE SUSPECT Add
@@ -543,9 +548,10 @@ function apply(string command) {
         string ip = command.split(" ")[1];
         _ = suspectNodes.remove(ip);
         _ = clientMap.remove(ip);
-        //shuffle
+        relocateData(); // async?
     }
-
+    io:println(clientMap);
+    io:println(lengthof clientMap);
     log:printInfo(command + " Applied!!");
 }
 
