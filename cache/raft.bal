@@ -61,8 +61,8 @@ public function startRaft() {
     //cheat for first node lol
     log[lengthof log] = { term: 1, command: "NA " + currentNode };
     apply("NA " + currentNode);
-    commitIndex++;
-    lastApplied++;
+    commitIndex = commitIndex +1;
+    lastApplied = lastApplied +1;
     //raftBlockingClient client;
     //grpc:ClientEndpointConfig cc = { url: currentNode };
     //client.init(cc);
@@ -129,13 +129,14 @@ public function joinRaft() {
 }
 
 function electLeader() {
-    log:printInfo("Starting Leader Election by " + currentNode);
+
     //addNodes();//temp
     if (state == "Leader") {
-        timer.stop();
+        //timer.stop();
         return;
     }
-    currentTerm++;
+    log:printInfo("Starting Leader Election by " + currentNode);
+    currentTerm = currentTerm +1;
     int electionTerm = currentTerm;
     votedFor = currentNode;
     state = "Candidate";
@@ -155,19 +156,20 @@ function electLeader() {
     if (voteCount < quoram) {
         state = "Follower";
         votedFor = "None";
-        heartbeatTimer.stop();
+        //heartbeatTimer.stop();
         //not sure if started
-        resetElectionTimer();
         //stepdown
     } else {
         state = "Leader";
-        timer.stop();
+        //timer.stop();
         foreach i in clientMap {
             nextIndex[i.config.url] = lengthof log;
         }
         startHeartbeatTimer();
+        //startProcessingSuspects();
     }
-    log:printInfo(currentNode +" is a "+state);
+    resetElectionTimer();
+    log:printInfo(currentNode + " is a " + state);
     true -> raftReadyChan;
     //io:println("After electing Leader");
     //printStats();
@@ -192,7 +194,7 @@ function sendVoteRequests(VoteRequest req) returns int {
     int count = 1;
     foreach item in candVoteLog {
         if (item == 1) {
-            count++;
+            count= count +1;
         }
         if (item == -2) {
             candVoteLog.clear();
@@ -302,7 +304,7 @@ function heartbeatChannel(http:Client node) {
     var heartbeatResp = blockingEp->post("/raft/append", check <json>untaint appendEntry);
     match heartbeatResp {
         http:Response payload => {
-            AppendEntriesResponse result = check <AppendEntriesResponse> check payload.getJsonPayload();
+            AppendEntriesResponse result = check <AppendEntriesResponse>check payload.getJsonPayload();
             if (result.sucess) {
                 matchIndex[peer] = result.followerMatchIndex;
                 nextIndex[peer] = result.followerMatchIndex + 1; //atomicc
@@ -315,12 +317,18 @@ function heartbeatChannel(http:Client node) {
             log:printError("Error from Connector: " + err.message + "\n");
             //commit suspect
             //boolean commited = clientRequest("NSA "+node.config.url);
+            //log:printInfo(node.config.url +" added to suspect list");
             //commited?
         }
     }
     commitEntry();
 }
 
+function startProcessingSuspects() {
+    foreach suspect in suspectNodes {
+        _ = start checkSuspectedNode(suspect);
+    }
+}
 //executed ones few appendRPC fails
 //assuming nodes are in suspect state
 function checkSuspectedNode(SuspectNode node) {
@@ -328,34 +336,37 @@ function checkSuspectedNode(SuspectNode node) {
     match clients {
         http:Client client => {
             blockingEp = client;
-            json req = {ip:node.client.config.url};//change
+            json req = { ip: node.client.config.url };
+            //change
             //increase timeout
-            var resp = blockingEp->post("/raft/indirect/",req);
+            var resp = blockingEp->post("/raft/indirect/", req);
             match resp {
                 http:Response payload => {
-                    json|error result =payload.getJsonPayload();
+                    json|error result = payload.getJsonPayload();
                     match result {
-                        json j =>{
-                            boolean status = check<boolean>j.status;
-                            if (status){
+                        json j => {
+                            boolean status = check <boolean>j.status;
+                            if (status) {
                                 //up
-                                boolean relocate = check<boolean>j.relocate;
-                                if (!relocate){
+                                boolean relocate = check <boolean>j.relocate;
+                                if (!relocate) {
                                     //not relocating just slow lol or up noww !
                                     node.suspectRate = node.suspectRate - SUSPECT_VALUE;
-                                    if (node.suspectRate <= -50){
+                                    if (node.suspectRate <= -50) {
                                         //commit remove from suspect
-                                        boolean commited = clientRequest("NSR "+node.client.config.url);
+                                        boolean commited = clientRequest("NSR " + node.client.config.url);
+                                        log:printInfo(node.client.config.url +" Recovred from suspection");
                                         //??commited
                                         return;
                                     }
                                 }
-                            }else {
+                            } else {
                                 //not responding
                                 node.suspectRate = node.suspectRate + SUSPECT_VALUE;
-                                if (node.suspectRate >= 100){
+                                if (node.suspectRate >= 100) {
                                     //commit dead
-                                    boolean commited = clientRequest("NR "+node.client.config.url);
+                                    boolean commited = clientRequest("NR " + node.client.config.url);
+                                    log:printInfo(node.client.config.url +" Removed from the cluster");
                                     return;
                                 }
                             }
@@ -408,7 +419,7 @@ function commitEntry() {
                 continue;
             }
             if (matchIndex[server.config.url] == item) {
-                replicatedCount++;
+                replicatedCount = replicatedCount +1;
             }
         }
         if (replicatedCount >= math:ceil(lengthof clientMap / 2.0)) {
@@ -448,13 +459,15 @@ function stepDown() {
 
 function resetElectionTimer() {
     int interval = math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT);
-    timer.stop();
-    (function () returns error?) onTriggerFunction = electLeader;
+    lock {
+        timer.stop();
+        (function () returns error?) onTriggerFunction = electLeader;
 
-    function (error) onErrorFunction = timerError;
-    timer = new task:Timer(onTriggerFunction, onErrorFunction,
-        interval);
-    timer.start();
+        function (error) onErrorFunction = timerError;
+        timer = new task:Timer(onTriggerFunction, onErrorFunction,
+            interval);
+        timer.start();
+    }
 }
 
 function startHeartbeatTimer() {
@@ -511,6 +524,11 @@ function addNode(string ip) returns ConfigChangeResponse {
 function apply(string command) {
     if (command.substring(0, 2) == "NA") { //NODE ADD
         string ip = command.split(" ")[1];
+        foreach item in clientMap { // temp. check heartbeat commiting agian
+            if (item.config.url == ip) {
+                return;
+            }
+        }
         http:Client client;
         http:ClientEndpointConfig cc = {
             url: ip,
@@ -527,16 +545,24 @@ function apply(string command) {
         nextIndex[ip] = 1;
         matchIndex[ip] = 0;
         hashRing.add(ip);
-        relocateData(); // async?  //incositant while catching up a new node?
+        relocateData();
+        // async?  //incositant while catching up a new node?
+        io:println(lengthof clientMap);
     }
 
     if (command.substring(0, 3) == "NSA") { //NODE SUSPECT Add
         string ip = command.split(" ")[1];
+        foreach item in suspectNodes { // temp. check heartbeat commiting agian
+            if (item.ip == ip) {
+                return;
+            }
+        }
         http:Client client;
         http:ClientEndpointConfig cc = { url: ip, timeoutMillis: 60000 };
         client.init(cc);
-        SuspectNode node= {ip:ip,client:client,suspectRate:0};
+        SuspectNode node = { ip: ip, client: client, suspectRate: 0 };
         suspectNodes[ip] = node;
+        _ = start checkSuspectedNode(node);
     }
 
     if (command.substring(0, 3) == "NSR") { //NODE SUSPECT Remove
@@ -546,12 +572,14 @@ function apply(string command) {
 
     if (command.substring(0, 2) == "NR") { //NODE Remove
         string ip = command.split(" ")[1];
-        _ = suspectNodes.remove(ip);
-        _ = clientMap.remove(ip);
-        relocateData(); // async?
+        //_ = suspectNodes.remove(ip);
+        boolean sucess = clientRequest("NSR " + ip);
+        if (sucess) {
+            _ = clientMap.remove(ip);
+            relocateData(); // async?
+        }
+
     }
-    io:println(clientMap);
-    io:println(lengthof clientMap);
     log:printInfo(command + " Applied!!");
 }
 

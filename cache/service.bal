@@ -7,7 +7,6 @@ import ballerina/config;
 
 @http:ServiceConfig { basePath: "/" }
 service<http:Service> api bind listener {
-
     // Allows you to add a node to the cluster
     @http:ResourceConfig {
         methods: ["POST"],

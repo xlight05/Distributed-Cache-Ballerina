@@ -26,10 +26,10 @@ public type ConsistentHash object {
         while (i < numberOfReplicas) {
             string nodeReplicaHash = <string>getCrc32HashDecimal(i + nodeName);
             circle[nodeReplicaHash] = nodeName;
-            i++;
+            i = i+1;
         }
         updateSortedHashes();
-        count++;
+        count = count +1;
     }
 
     //Uodate sortedHashes array with the key of circle map
@@ -92,8 +92,8 @@ public type ConsistentHash object {
             string c = hex.substring(i, i + 1);
             int j = hexRep.indexOf(c);
             sum = <int>(sum + (math:pow(16.0, <float>counter)) * j);
-            counter--;
-            i++;
+            counter = count -1;
+            i = i +1;
         }
         return sum;
     }

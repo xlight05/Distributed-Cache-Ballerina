@@ -55,7 +55,6 @@ endpoint http:Listener listener {
 @http:ServiceConfig { basePath: "/raft" }
 service<http:Service> raft bind listener {
     //Internal
-
     @http:ResourceConfig {
         methods: ["POST"],
         path: "/vote"
@@ -68,7 +67,7 @@ service<http:Service> raft bind listener {
         log:printInfo("Vote request came from " + voteReq.candidateID);
         boolean granted = voteResponseHandle(voteReq);
         VoteResponse res = { granted: granted, term: currentTerm };
-        log:printInfo("Vote status for " + voteReq.candidateID+" is "+res.granted);
+        log:printInfo("Vote status for " + voteReq.candidateID + " is " + res.granted);
         http:Response response;
         response.setJsonPayload(check <json>res);
 
@@ -136,7 +135,7 @@ service<http:Service> raft bind listener {
     }
     indirectRPC(endpoint client, http:Request request) {
         json reqq = check request.getJsonPayload();
-        string targetIP = check <string> reqq.ip;
+        string targetIP = check <string>reqq.ip;
         http:Client target;
         foreach i in clientMap {
             if (i.config.url == targetIP) {
@@ -191,9 +190,6 @@ service<http:Service> raft bind listener {
 }
 
 function heartbeatHandle(AppendEntries appendEntry) returns AppendEntriesResponse {
-    if (state == "Follower") {
-        resetElectionTimer();
-    }
     //initLog();
     AppendEntriesResponse res;
     if (currentTerm < appendEntry.term) {
@@ -201,11 +197,12 @@ function heartbeatHandle(AppendEntries appendEntry) returns AppendEntriesRespons
         currentTerm = untaint appendEntry.term;
         state = "Follower";
         votedFor = "None";
-        heartbeatTimer.stop();
+
     }
     if (currentTerm > appendEntry.term) {
         res = { term: currentTerm, sucess: false };
     } else {
+        resetElectionTimer();
         leader = untaint appendEntry.leaderID;
         state = "Follower";
         boolean sucess = appendEntry.prevLogTerm == 0 || (appendEntry.prevLogIndex < lengthof log && log[appendEntry.
@@ -215,7 +212,7 @@ function heartbeatHandle(AppendEntries appendEntry) returns AppendEntriesRespons
         if (sucess) {
             index = appendEntry.prevLogIndex;
             foreach i in appendEntry.entries{
-                index++;
+                index = index +1;
                 if (getTerm(index) != i.term) {
                     log[index - 1] = i;//not sure
                 }
@@ -254,7 +251,8 @@ function voteResponseHandle(VoteRequest voteReq) returns boolean {
         currentTerm = untaint term;
         state = "Follower";
         votedFor = "None";
-        startElectionTimer();//maybe move this down
+        //resetElectionTimer();
+        //startElectionTimer();//maybe move this down
         //Leader variable init
     }
 
@@ -287,6 +285,7 @@ function voteResponseHandle(VoteRequest voteReq) returns boolean {
         return (false);
     }
 
+    resetElectionTimer();
     votedFor = untaint voteReq.candidateID;
 
     return true;
