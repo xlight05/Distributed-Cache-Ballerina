@@ -7,9 +7,7 @@ import ballerina/log;
 import ballerina/config;
 import ballerina/http;
 
-//TODO make proper election timeout with MIN MAX timeout
-//TODO make proper hearbeat timeout
-//TODO Test dynamic node changes
+
 //TODO LOCKS
 //TODO LAG Test
 //TODO Partition Test
@@ -248,13 +246,14 @@ function seperate(http:Client node, VoteRequest req) {
 
         }
         error err => {
-            log:printError("Error from Connector: " + err.message + "\n");
+            log:printError("Voted Request failed: " + err.message + "\n");
             candVoteLog[node.config.url] = 0;
         }
     }
 }
 
 function sendHeartbeats() {
+    io:println("Sending heartbeats");
     if (state != "Leader") {
         return;
     }
@@ -310,11 +309,12 @@ function heartbeatChannel(http:Client node) {
                 nextIndex[peer] = result.followerMatchIndex + 1; //atomicc
             } else {
                 nextIndex[peer] = max(1, nextIndexOfPeer - 1);
+                io:println("Another one?");
                 heartbeatChannel(node);
             }
         }
         error err => {
-            log:printError("Error from Connector: " + err.message + "\n");
+            log:printError("Heartbeat failed: " + err.message + "\n");
             //commit suspect
             //boolean commited = clientRequest("NSA "+node.config.url);
             //log:printInfo(node.config.url +" added to suspect list");
@@ -332,9 +332,13 @@ function startProcessingSuspects() {
 //executed ones few appendRPC fails
 //assuming nodes are in suspect state
 function checkSuspectedNode(SuspectNode node) {
+    if (state != "Leader"){
+        return;
+    }
     http:Client? clients = getHealthyNode();
     match clients {
         http:Client client => {
+            io:println("Healthy Node :"+client.config.url);
             blockingEp = client;
             json req = { ip: node.client.config.url };
             //change
@@ -345,9 +349,10 @@ function checkSuspectedNode(SuspectNode node) {
                     json|error result = payload.getJsonPayload();
                     match result {
                         json j => {
+                            io:println("Response Recieved :"+ j.toString());
+                            io:println(node.suspectRate);
                             boolean status = check <boolean>j.status;
                             if (status) {
-                                //up
                                 boolean relocate = check <boolean>j.relocate;
                                 if (!relocate) {
                                     //not relocating just slow lol or up noww !
@@ -381,7 +386,7 @@ function checkSuspectedNode(SuspectNode node) {
                 }
                 error err => {
                     //if healthy node didnt respond
-                    log:printError("Error from Connector: " + err.message + "\n");
+                    log:printError("Healthy Node didn't respond: " + err.message + "\n");
                 }
             }
 
@@ -394,6 +399,9 @@ function checkSuspectedNode(SuspectNode node) {
 
 function getHealthyNode() returns http:Client? {
     foreach i in clientMap {
+        if (i.config.url==currentNode){
+            continue;
+        }
         boolean inSuspect = false;
         foreach j in suspectNodes {
             if (i.config.url == j.ip) {
@@ -404,6 +412,7 @@ function getHealthyNode() returns http:Client? {
             return i;
         }
     }
+    //if none return current Node ?
     return ();
 }
 
@@ -511,9 +520,15 @@ function clientRequest(string command) returns boolean {
 
 
 function addNode(string ip) returns ConfigChangeResponse {
+
     if (state != "Leader") {
         return { sucess: false, leaderHint: leader };
     } else {
+        foreach item in clientMap { // temp. check heartbeat commiting agian
+            if (item.config.url == ip) {
+                return { sucess: false, leaderHint: leader };
+            }
+        }
         string command = "NA " + ip;
         //or commit
         boolean sucess = clientRequest(command);
@@ -521,14 +536,16 @@ function addNode(string ip) returns ConfigChangeResponse {
     }
 }
 
+
+
 function apply(string command) {
     if (command.substring(0, 2) == "NA") { //NODE ADD
         string ip = command.split(" ")[1];
-        foreach item in clientMap { // temp. check heartbeat commiting agian
-            if (item.config.url == ip) {
-                return;
-            }
-        }
+        //foreach item in clientMap { // temp. check heartbeat commiting agian
+        //    if (item.config.url == ip) {
+        //        return;
+        //    }
+        //}
         http:Client client;
         http:ClientEndpointConfig cc = {
             url: ip,
@@ -582,6 +599,12 @@ function apply(string command) {
     }
     log:printInfo(command + " Applied!!");
 }
+
+// function isQuoram(int count) returns boolean {
+//     if (count==0){
+//         return true;
+//     }
+
 
 // function isQuoram(int count) returns boolean {
 //     if (count==0){

@@ -77,7 +77,7 @@ public type Consistent object {
         // Complete
         int count = 0;
         while (true) {
-            count++;
+            count = count +1;
             if (count >= lengthof sortedSet){
                 log:printError("not enough room to distribute partitions");
             }

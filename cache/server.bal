@@ -136,10 +136,10 @@ service<http:Service> raft bind listener {
     indirectRPC(endpoint client, http:Request request) {
         json reqq = check request.getJsonPayload();
         string targetIP = check <string>reqq.ip;
-        http:Client target;
         foreach i in clientMap {
             if (i.config.url == targetIP) {
-                blockingEp = target;
+                io:println("Target IP :"+i.config.url);
+                blockingEp = i;
                 break;
             }
         }
@@ -148,6 +148,7 @@ service<http:Service> raft bind listener {
         json j1;
         match resp {
             http:Response payload => {
+                io:println("Target is up");
                 string result = check payload.getTextPayload();
                 boolean relocate;
                 if (result == "true") {
@@ -158,6 +159,7 @@ service<http:Service> raft bind listener {
                 j1 = { "status": true, "relocate": relocate };
             }
             error err => {
+                io:println("Nop, still down");
                 j1 = { "status": false, "relocate": false };
             }
         }
@@ -171,7 +173,7 @@ service<http:Service> raft bind listener {
 
     @http:ResourceConfig {
         methods: ["GET"],
-        path: "/failCheck/"
+        path: "/failCheck"
     }
     failCheckRPC(endpoint client, http:Request request) {
         string res;
