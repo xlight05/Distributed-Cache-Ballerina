@@ -75,6 +75,10 @@ public function createCluster() {
 #    + nodeIPs - ips of the nodes in the cluster
 
 public function joinCluster(string[] nodeIPs) {
+    //improve resiliancy
+    //when leader is not appointed
+    //when target is not leader
+    //fix recurse
     foreach node in nodeIPs {
         http:Client client;
         http:ClientEndpointConfig cfg=  {url:node};
@@ -86,7 +90,7 @@ public function joinCluster(string[] nodeIPs) {
                 ConfigChangeResponse result = check <ConfigChangeResponse> check payload.getJsonPayload();
                 if (result.sucess){
                     joinRaft();
-                    break;
+                    return;
                 }else {
                     log:printInfo("No "+node +" is not the leader");
                     string[] leaderIP;
@@ -372,6 +376,8 @@ public type Cache object {
     //     return entries.hasKey(key);
     // }
 
+
+
     public function locateNode(string key) {
         io:println(key + " located in ");
         io:println(hashRing.get(key));
@@ -408,6 +414,88 @@ public type Cache object {
             }
         }
         log:printInfo("Nodes Cleared");
+    }
+
+# Returns the cached value associated with the given key. If the provided cache key is not found in the cluster, () will be returned.
+#
+# + key - key which is used to remove the entry
+    public function remove(string key) {
+        //Adding in to nearCache for quick retrival
+        if (isLocalCacheEnabled){
+            nearCache.remove(key);
+        }
+        string nodeIP = hashRing.get(key);
+        json entryJSON = {"key":key};
+
+
+        http:Client? clientNode = clientMap[nodeIP];
+        http:Client client;
+        match clientNode {
+            http:Client c => {
+                client = c;
+            }
+            () => {
+                log:printError("Client not found");
+            }
+        }
+        nodeEndpoint = client;
+        var res = nodeEndpoint->delete("/data/remove/", entryJSON);
+        match res {
+            http:Response resp => {
+                var msg = resp.getJsonPayload();
+                match msg {
+                    json jsonPayload => {
+                        log:printInfo("Cache entry remove " + jsonPayload["status"].toString());
+                    }
+                    error err => {
+                        log:printError("error json convert", err = err);
+                    }
+                }
+            }
+            error err => {
+                log:printError("error removing from node", err = err);
+            }
+        }
+        //TODO Not enoguh nodes for replica
+        string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
+        foreach node in replicaNodes {
+            if (node == nodeIP){
+                continue;
+            }
+            io:println("Replica : " + node);
+            //http:ClientEndpointConfig cfg = { url: node };
+            //nodeEndpoint.init(cfg);
+
+
+            http:Client? replicaNode = clientMap[node];
+            http:Client replica;
+            match replicaNode {
+                http:Client c => {
+                    replica = c;
+                }
+                () => {
+                    log:printError("Client not found");
+                }
+            }
+            nodeEndpoint = replica;
+            var resz = nodeEndpoint->delete("/data/store/", entryJSON);
+            match resz {
+                http:Response resp => {
+                    var msg = resp.getJsonPayload();
+                    match msg {
+                        json jsonPayload => {
+                            log:printInfo("Cache entry replica remove " + jsonPayload["status"].toString());
+                        }
+                        error err => {
+                            log:printError(err.message, err = err);
+                        }
+                    }
+                }
+                error err => {
+                    log:printError(err.message, err = err);
+                }
+            }
+        }
     }
 
 };

@@ -253,7 +253,6 @@ function seperate(http:Client node, VoteRequest req) {
 }
 
 function sendHeartbeats() {
-    io:println("Sending heartbeats");
     if (state != "Leader") {
         return;
     }

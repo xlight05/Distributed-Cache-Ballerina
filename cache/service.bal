@@ -85,6 +85,30 @@ service<http:Service> api bind listener {
                                                   "Error sending response", err = e) };
     }
 
+
+    //Allows users to store data in the node.
+    @http:ResourceConfig {
+        methods: ["DELETE"],
+        path: "/data/remove"
+    }
+    dataRemove(endpoint caller, http:Request req) {
+        http:Response res = new;
+        json|error obj = req.getJsonPayload();
+        json jsObj;
+        match obj {
+            json jsonObj => {
+                 boolean status = cacheEntries.remove(jsonObj["key"].toString());
+                jsObj = {"status":status};
+            }
+            error err => {
+                log:printError("Error recieving response", err = err);
+            }
+        }
+        res.setJsonPayload(untaint jsObj);
+        caller->respond(res) but { error e => log:printError(
+                                                  "Error sending response", err = e) };
+    }
+
     //Allows users to store data in the node.
     @http:ResourceConfig {
         methods: ["POST"],

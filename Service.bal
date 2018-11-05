@@ -1,42 +1,11 @@
-import ballerina/io;
-import cache;
-import ballerina/runtime;
-import ballerina/log;
-import ballerina/http;
-import ballerina/config;
-
-public function main(string... args) {
-
-    //cache:createCluster();
-    _ = cache:initNodeConfig();
-    cache:Cache oauthCache = new("oauthCache");
-
-    //oauthCache.put("Name", "Ballerina");
-
-    oauthCache.put("1", "1");
-    oauthCache.put("2", "2");
-    oauthCache.put("3", "3");
-    io:println(<string>oauthCache.get("1"));
-    oauthCache.put("4", "4");
-    oauthCache.put("5", "5");
-    oauthCache.put("6", "6");
-    oauthCache.put("7", "7");
-    oauthCache.put("8", "8");
-    oauthCache.put("9", "9");
-    oauthCache.put("10", "10");
-    oauthCache.put("11", "11");
-    oauthCache.put("12", "12");
-
-    io:println(<string>oauthCache.get("1"));
-    oauthCache.remove ("1");
-    io:println(<string>oauthCache.get("1"));
-    io:println(<string>oauthCache.get("2"));
-
-
-    io:println(<string>oauthCache.get("Name"));
-    runtime:sleep(100000000);
-}
-
+//import ballerina/io;
+//import cache;
+//import ballerina/runtime;
+//import ballerina/log;
+//import ballerina/http;
+//import ballerina/config;
+//
+//
 //
 //endpoint http:Listener listen {
 //    port: config:getAsInt("api", default = 8080)
@@ -92,7 +61,7 @@ public function main(string... args) {
 //                string value = untaint check <string> jsonObj["value"];
 //                activeCache.put(key, value);
 //                http:Response res = new;
-//                json testJson = { "message": "Nodes Added", "status": 200 };
+//                json testJson = { "message": "Entry Added", "status": 200 };
 //                res.setJsonPayload(untaint testJson);
 //
 //        caller->respond(res) but { error e => log:printError(
@@ -114,10 +83,9 @@ public function main(string... args) {
 //        any? x =untaint activeCache.get(key);
 //        //any x =  "";
 //        //json y = {key:x};
-//        string y = <string> x;
-//        json resp;
+//        string value = <string> x;
+//        json resp={"key":key,"value":value};
 //        // try{
-//         resp  =  y;
 //        // }catch( error err){
 //        //     resp="null";
 //        // }
@@ -136,10 +104,9 @@ public function main(string... args) {
 //        match obj {
 //            json jsonObj => {
 //                string key = untaint check <string> jsonObj["key"];
-//                string value = untaint check <string> jsonObj["value"];
-//                activeCache.put(key, value);
+//                activeCache.remove(key);
 //                http:Response res = new;
-//                json testJson = { "message": "Nodes Added", "status": 200 };
+//                json testJson = { "message": "Entry removed", "status": 200 };
 //                res.setJsonPayload(untaint testJson);
 //
 //        caller->respond(res) but { error e => log:printError(
