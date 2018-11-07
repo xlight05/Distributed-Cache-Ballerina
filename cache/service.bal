@@ -7,6 +7,7 @@ import ballerina/config;
 
 @http:ServiceConfig { basePath: "/" }
 service<http:Service> api bind listener {
+//boolean initCacheVar = initCache();
     // Allows you to add a node to the cluster
     @http:ResourceConfig {
         methods: ["POST"],
@@ -30,30 +31,30 @@ service<http:Service> api bind listener {
         }
     }
 
-    //Allows you to remove a node from the cluster
-    @http:ResourceConfig {
-        methods: ["DELETE"],
-        path: "/node/remove"
-    }
-    remove(endpoint caller, http:Request req) {
-
-        http:Response res = new;
-        boolean isRemoved = removeServer("test");
-        if (isRemoved){
-            json testJson = { "message": "Node Removed", "status": 200 };
-
-            res.setJsonPayload(testJson);
-            caller->respond(res) but { error e => log:printError(
-                                                      "Error sending response", err = e) };
-        }
-        else {
-            json testJson = { "message": "Node not found", "status": 500 };
-
-            res.setJsonPayload(testJson);
-            caller->respond(res) but { error e => log:printError(
-                                                      "Error sending response", err = e) };
-        }
-    }
+    ////Allows you to remove a node from the cluster
+    //@http:ResourceConfig {
+    //    methods: ["DELETE"],
+    //    path: "/node/remove"
+    //}
+    //remove(endpoint caller, http:Request req) {
+    //
+    //    http:Response res = new;
+    //    boolean isRemoved = removeServer("test");
+    //    if (isRemoved){
+    //        json testJson = { "message": "Node Removed", "status": 200 };
+    //
+    //        res.setJsonPayload(testJson);
+    //        caller->respond(res) but { error e => log:printError(
+    //                                                  "Error sending response", err = e) };
+    //    }
+    //    else {
+    //        json testJson = { "message": "Node not found", "status": 500 };
+    //
+    //        res.setJsonPayload(testJson);
+    //        caller->respond(res) but { error e => log:printError(
+    //                                                  "Error sending response", err = e) };
+    //    }
+    //}
 
     //Allows you to list the nodes from the cluster
     @http:ResourceConfig {
@@ -251,4 +252,9 @@ service<http:Service> api bind listener {
     }
 }
 
-
+//
+//function initCache() returns boolean {
+//    io:println("In init cache");
+//    true -> cacheReady;
+//    return true;
+//}

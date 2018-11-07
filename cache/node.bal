@@ -1,7 +1,6 @@
 import ballerina/io;
 import ballerina/http;
 import ballerina/log;
-import ballerina/config;
 //import consistent;
 import consistent_bound;
 
@@ -98,19 +97,6 @@ function relocateData() {
     }
 }
 
-//Removes item from server
-function removeServer(string ip) returns boolean {
-    boolean found = false;
-    foreach i in clientMap{
-        if (i.config.url == ip){
-            //remove node from array
-            found = true;
-        }
-    }
-    //Remove from ring
-    //Reallocate Data
-    return found;
-}
 
 //Adds servers in node list to hash ring
 function setServers() {

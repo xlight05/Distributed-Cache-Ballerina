@@ -12,6 +12,8 @@ public type LocalCache object {
     map<LocalCacheEntry> entries;
     private float evictionFactor;
 
+
+
     public new(capacity = 100, evictionFactor = 0.25) {
         // Cache capacity must be a positive value.
         if (capacity <= 0) {
@@ -24,6 +26,8 @@ public type LocalCache object {
             throw e;
         }
     }
+
+
 
     public function hasKey(string key) returns (boolean) {
         return entries.hasKey(key);

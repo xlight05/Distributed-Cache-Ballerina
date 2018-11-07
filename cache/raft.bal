@@ -23,16 +23,17 @@ endpoint http:Client blockingEp {
 };
 
 map<http:Client> clientMap;
-int MIN_ELECTION_TIMEOUT = 2000;
-int MAX_ELECTION_TIMEOUT = 2250;
-int HEARTBEAT_TIMEOUT = 1000;
+
+int MIN_ELECTION_TIMEOUT = config:getAsInt("raft.min.election.timeout", default = 2000);
+int MAX_ELECTION_TIMEOUT = config:getAsInt("raft.max.election.timeout", default = 2500);
+int HEARTBEAT_TIMEOUT = config:getAsInt("raft.heartbeat.timeout", default = 1000);
 
 string leader;
 string state = "Follower";
 int currentTerm;
 LogEntry[] log = [{}];
 string votedFor = "None";
-string currentNode = config:getAsString("ip") + ":" + config:getAsString("port");
+string currentNode = config:getAsString("raft.ip") + ":" + config:getAsString("raft.port");
 int commitIndex = 0;
 int lastApplied = 0;
 task:Timer? timer;
@@ -50,8 +51,8 @@ type SuspectNode record {
 };
 
 //failure detector
-int SUSPECT_VALUE = 10; // 1 - 100;
-int FAILURE_TIMEOUT_MILS = 1000;
+int SUSPECT_VALUE = config:getAsInt("failure.detector.suspect.value", default = 10);
+int FAILURE_TIMEOUT_MILS = config:getAsInt("failure.detector.timeout.millis", default = 1000);
 map<SuspectNode> suspectNodes;
 boolean isRelocationRunning;
 
@@ -59,8 +60,8 @@ public function startRaft() {
     //cheat for first node lol
     log[lengthof log] = { term: 1, command: "NA " + currentNode };
     apply("NA " + currentNode);
-    commitIndex = commitIndex +1;
-    lastApplied = lastApplied +1;
+    commitIndex = commitIndex + 1;
+    lastApplied = lastApplied + 1;
     //raftBlockingClient client;
     //grpc:ClientEndpointConfig cc = { url: currentNode };
     //client.init(cc);
@@ -82,6 +83,8 @@ public function startRaft() {
     //printStats();
     boolean ready;
     ready <- raftReadyChan;
+    //boolean isCacheReady;
+    //isCacheReady <- cacheReady;
 }
 
 //function printStats() {
@@ -124,6 +127,8 @@ public function joinRaft() {
     //printStats();
     boolean ready;
     ready <- raftReadyChan;
+    //boolean isCacheReady;
+    //isCacheReady <- cacheReady;
 }
 
 function electLeader() {
@@ -134,7 +139,7 @@ function electLeader() {
         return;
     }
     log:printInfo("Starting Leader Election by " + currentNode);
-    currentTerm = currentTerm +1;
+    currentTerm = currentTerm + 1;
     int electionTerm = currentTerm;
     votedFor = currentNode;
     state = "Candidate";
@@ -159,12 +164,13 @@ function electLeader() {
         //stepdown
     } else {
         state = "Leader";
+        leader = currentNode;
         //timer.stop();
         foreach i in clientMap {
             nextIndex[i.config.url] = lengthof log;
         }
         startHeartbeatTimer();
-        //startProcessingSuspects();
+        startProcessingSuspects();
     }
     resetElectionTimer();
     log:printInfo(currentNode + " is a " + state);
@@ -192,7 +198,7 @@ function sendVoteRequests(VoteRequest req) returns int {
     int count = 1;
     foreach item in candVoteLog {
         if (item == 1) {
-            count= count +1;
+            count = count + 1;
         }
         if (item == -2) {
             candVoteLog.clear();
@@ -315,9 +321,17 @@ function heartbeatChannel(http:Client node) {
         error err => {
             log:printError("Heartbeat failed: " + err.message + "\n");
             //commit suspect
-            //boolean commited = clientRequest("NSA "+node.config.url);
-            //log:printInfo(node.config.url +" added to suspect list");
-            //commited?
+            boolean found = false;
+            foreach suspect in suspectNodes {
+                if (suspect.ip == node.config.url) {
+                    found = true;
+                }
+            }
+            if (!found) {
+                boolean commited = clientRequest("NSA " + node.config.url);
+                log:printInfo(node.config.url + " added to suspect list");
+                //commited?
+            }
         }
     }
     commitEntry();
@@ -331,13 +345,14 @@ function startProcessingSuspects() {
 //executed ones few appendRPC fails
 //assuming nodes are in suspect state
 function checkSuspectedNode(SuspectNode node) {
-    if (state != "Leader"){
+    //TODO maybe backoff factor
+    if (state != "Leader") {
         return;
     }
     http:Client? clients = getHealthyNode();
     match clients {
         http:Client client => {
-            io:println("Healthy Node :"+client.config.url);
+            io:println("Healthy Node :" + client.config.url);
             blockingEp = client;
             json req = { ip: node.client.config.url };
             //change
@@ -348,8 +363,7 @@ function checkSuspectedNode(SuspectNode node) {
                     json|error result = payload.getJsonPayload();
                     match result {
                         json j => {
-                            io:println("Response Recieved :"+ j.toString());
-                            io:println(node.suspectRate);
+                            log:printInfo("Suspect rate of "+ node.ip + " : "+node.suspectRate);
                             boolean status = check <boolean>j.status;
                             if (status) {
                                 boolean relocate = check <boolean>j.relocate;
@@ -359,7 +373,7 @@ function checkSuspectedNode(SuspectNode node) {
                                     if (node.suspectRate <= -50) {
                                         //commit remove from suspect
                                         boolean commited = clientRequest("NSR " + node.client.config.url);
-                                        log:printInfo(node.client.config.url +" Recovred from suspection");
+                                        log:printInfo(node.client.config.url + " Recovred from suspection "+commited);
                                         //??commited
                                         return;
                                     }
@@ -370,7 +384,7 @@ function checkSuspectedNode(SuspectNode node) {
                                 if (node.suspectRate >= 100) {
                                     //commit dead
                                     boolean commited = clientRequest("NR " + node.client.config.url);
-                                    log:printInfo(node.client.config.url +" Removed from the cluster");
+                                    log:printInfo(node.client.config.url + " Removed from the cluster");
                                     return;
                                 }
                             }
@@ -386,6 +400,8 @@ function checkSuspectedNode(SuspectNode node) {
                 error err => {
                     //if healthy node didnt respond
                     log:printError("Healthy Node didn't respond: " + err.message + "\n");
+                    runtime:sleep(FAILURE_TIMEOUT_MILS);
+                    checkSuspectedNode(node);
                 }
             }
 
@@ -398,7 +414,7 @@ function checkSuspectedNode(SuspectNode node) {
 
 function getHealthyNode() returns http:Client? {
     foreach i in clientMap {
-        if (i.config.url==currentNode){
+        if (i.config.url == currentNode) {
             continue;
         }
         boolean inSuspect = false;
@@ -427,7 +443,7 @@ function commitEntry() {
                 continue;
             }
             if (matchIndex[server.config.url] == item) {
-                replicatedCount = replicatedCount +1;
+                replicatedCount = replicatedCount + 1;
             }
         }
         if (replicatedCount >= math:ceil(lengthof clientMap / 2.0)) {
@@ -519,7 +535,6 @@ function clientRequest(string command) returns boolean {
 
 
 function addNode(string ip) returns ConfigChangeResponse {
-
     if (state != "Leader") {
         return { sucess: false, leaderHint: leader };
     } else {
@@ -551,7 +566,7 @@ function apply(string command) {
             timeoutMillis: HEARTBEAT_TIMEOUT / 3
             //retryConfig: {
             //    interval: HEARTBEAT_TIMEOUT/2,
-            //    count: 3,
+            //    count: 1,
             //    backOffFactor: 1.0,
             //    maxWaitInterval: HEARTBEAT_TIMEOUT/2
             //}
@@ -563,7 +578,6 @@ function apply(string command) {
         hashRing.add(ip);
         relocateData();
         // async?  //incositant while catching up a new node?
-        io:println(lengthof clientMap);
     }
 
     if (command.substring(0, 3) == "NSA") { //NODE SUSPECT Add
@@ -579,11 +593,13 @@ function apply(string command) {
         SuspectNode node = { ip: ip, client: client, suspectRate: 0 };
         suspectNodes[ip] = node;
         _ = start checkSuspectedNode(node);
+        printSuspectedNodes();
     }
 
     if (command.substring(0, 3) == "NSR") { //NODE SUSPECT Remove
         string ip = command.split(" ")[1];
         _ = suspectNodes.remove(ip);
+        printSuspectedNodes();
     }
 
     if (command.substring(0, 2) == "NR") { //NODE Remove
@@ -592,13 +608,30 @@ function apply(string command) {
         boolean sucess = clientRequest("NSR " + ip);
         if (sucess) {
             _ = clientMap.remove(ip);
+            hashRing.removeNode(ip);
             relocateData(); // async?
+            printSuspectedNodes();
+            printClientNodes();
         }
+
 
     }
     log:printInfo(command + " Applied!!");
 }
 
+function printClientNodes(){
+    io:println("Client map list");
+    foreach i in clientMap {
+        io:println(i.config.url);
+    }
+}
+
+function printSuspectedNodes() {
+    io:println("Suspected node list");
+    foreach i in suspectNodes {
+        io:println(i.ip);
+    }
+}
 // function isQuoram(int count) returns boolean {
 //     if (count==0){
 //         return true;

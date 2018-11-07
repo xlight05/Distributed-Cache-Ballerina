@@ -9,7 +9,7 @@ import ballerina/http;
 //    port: config:getAsInt("port", default = 7000)
 //};listener listner
 endpoint http:Listener listener {
-    port: config:getAsInt("port", default = 7000)
+    port: config:getAsInt("raft.port", default = 7000)
 };
 //map<boolean> voteLog;
 //boolean initVoteLog = voteLogInit();
@@ -54,6 +54,7 @@ endpoint http:Listener listener {
 //-> (term, conflictIndex, conflictTerm, success)
 @http:ServiceConfig { basePath: "/raft" }
 service<http:Service> raft bind listener {
+    //boolean initRaftVar = initRaft();
     //Internal
     @http:ResourceConfig {
         methods: ["POST"],
@@ -72,7 +73,7 @@ service<http:Service> raft bind listener {
         response.setJsonPayload(check <json>res);
 
         client->respond(response) but {
-            error e => log:printError("Error in responding to vote req", err = e)
+            error e => log:printError("Error in responding to vote request", err = e)
         };
     }
     @http:ResourceConfig {
@@ -92,7 +93,7 @@ service<http:Service> raft bind listener {
         response.setJsonPayload(untaint check <json>res);
 
         client->respond(response) but {
-            error e => log:printError("Error in responding to append req", err = e)
+            error e => log:printError("Error in responding to append request", err = e)
         };
     }
 
@@ -125,7 +126,7 @@ service<http:Service> raft bind listener {
         response.setJsonPayload(check <json>res);
 
         client->respond(response) but {
-            error e => log:printError("Error in responding to vote req", err = e)
+            error e => log:printError("Error in responding to client request", err = e)
         };
     }
 
@@ -138,7 +139,6 @@ service<http:Service> raft bind listener {
         string targetIP = check <string>reqq.ip;
         foreach i in clientMap {
             if (i.config.url == targetIP) {
-                io:println("Target IP :"+i.config.url);
                 blockingEp = i;
                 break;
             }
@@ -148,7 +148,6 @@ service<http:Service> raft bind listener {
         json j1;
         match resp {
             http:Response payload => {
-                io:println("Target is up");
                 string result = check payload.getTextPayload();
                 boolean relocate;
                 if (result == "true") {
@@ -159,15 +158,15 @@ service<http:Service> raft bind listener {
                 j1 = { "status": true, "relocate": relocate };
             }
             error err => {
-                io:println("Nop, still down");
                 j1 = { "status": false, "relocate": false };
             }
         }
+        log:printInfo("Indirect ping for "+blockingEp.config.url+" Server Status : "+j1["status"].toString());
         http:Response response;
         response.setJsonPayload(j1);
 
         client->respond(response) but {
-            error e => log:printError("Error in responding to vote req", err = e)
+            error e => log:printError("Error in responding to indirect ping", err = e)
         };
     }
 
@@ -186,7 +185,7 @@ service<http:Service> raft bind listener {
         response.setTextPayload(res);
 
         client->respond(response) but {
-            error e => log:printError("Error in responding to vote req", err = e)
+            error e => log:printError("Error in responding to fail check RPC", err = e)
         };
     }
 }
@@ -306,7 +305,11 @@ function getTerm(int index) returns int {
     }
 }
 
-
+//function initRaft() returns boolean {
+//    io:println("In init raft");
+//    true -> raftReady;
+//    return true;
+//}
 
 //service raft bind listener {
 //    //Internal

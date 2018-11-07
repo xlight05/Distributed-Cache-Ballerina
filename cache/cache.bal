@@ -5,7 +5,7 @@ import ballerina/log;
 import ballerina/config;
 
 endpoint http:Client nodeEndpoint {
-    url: "http://localhost:" + config:getAsString("port", default = "7000")
+    url: "http://localhost:" + config:getAsString("cache.port", default = "7000")
 };
 
 # Represents a node in the cluster
@@ -38,19 +38,20 @@ type CacheEntry record {
 // Map which stores all of the caches.
 
 map<Cache> cacheMap;
-string currentIP = config:getAsString("ip", default = "http://localhost");
-int currentPort = config:getAsInt("port", default = 7000);
+string currentIP = config:getAsString("cache.ip", default = "http://localhost");
+int currentPort = config:getAsInt("cache.port", default = 7000);
 int replicationFact = 1; // Per Node
 float cacheEvictionFactor = 0.1; //Per Node
 int CacheCapacity = 1000000; //Per Node
 boolean isLocalCacheEnabled = false;
 //boolean init = initNodeConfig();
 // Object contains details of the current Node
-
+//channel<boolean> raftReady;
+//channel<boolean> cacheReady;
 
 public function initNodeConfig() returns boolean {
     //Suggestion rest para array suppot for config API
-    string hosts = config:getAsString("hosts");
+    string hosts = config:getAsString("cache.hosts");
     string[] configNodeList = hosts.split(",");
     io:println(configNodeList);
     if (configNodeList[0] == ""){
@@ -88,6 +89,7 @@ public function joinCluster(string[] nodeIPs) {
         match ee {
             http:Response payload => {
                 ConfigChangeResponse result = check <ConfigChangeResponse> check payload.getJsonPayload();
+                io:println(result);
                 if (result.sucess){
                     joinRaft();
                     return;
@@ -150,6 +152,8 @@ public function joinCluster(string[] nodeIPs) {
 # + name - name of the cache object
 
 public function createCache(string name) {
+    //boolean ready;
+    //ready <- raftReadyChan;
     cacheMap[name] = new Cache(name);
     log:printInfo("Cache Created " + name);
 }
@@ -175,7 +179,6 @@ public function getCache(string name) returns Cache? {
                         if (!(jsonPayload["status"].toString() == "Not found")){
                             Cache cacheObj = check <Cache>jsonPayload;
                             cacheMap[name] = cacheObj;
-                            log:printInfo("Cache Found- " + name);
                             return cacheObj;
                         } else {
                             log:printWarn(name + " Cache not found- in " + node.config.url);
@@ -194,14 +197,19 @@ public function getCache(string name) returns Cache? {
     return ();
 }
 
+type CacheConfig record {
+   int replicationFactor;
+};
+
 
 # Represents a cache.
 public type Cache object {
     string name;
-    LocalCache nearCache = new(capacity = 2, evictionFactor = 0.5);
-    string cacheCfg;
+    //TODO overide with code??
+    LocalCache nearCache = new(capacity = config:getAsInt("local.cache.capacity", default = 100), evictionFactor =config:getAsFloat("local.cache.evictionFactor", default = 0.25));
+    CacheConfig config;
 
-    public new(name, cacheCfg = "none") {
+    public new(name, config) {
         if (cacheMap.hasKey(name)){
             return;
         }
@@ -209,9 +217,8 @@ public type Cache object {
 
         match cacheVar {
             Cache cache => {
-                name = cache.name;
-                cacheCfg = cache.cacheCfg;
-                //nearCache cfg
+                self = cache;
+                log:printInfo("Cache Found- " + self.name);
             }
             () => {
                 cacheMap[name] = self;
