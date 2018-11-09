@@ -26,8 +26,7 @@ function getCacheEntry(string key) returns json {
 
 //Adds a single cache entry to the store
 function setCacheEntry(json jsObj) returns json {
-    if (CacheCapacity <= lengthof cacheEntries){
-        io:println(lengthof cacheEntries);
+    if (cacheCapacity <= lengthof cacheEntries +1){
         evictEntries();
     }
     string key = jsObj["key"].toString();
@@ -52,6 +51,7 @@ function getChangedEntries() returns json {
             entries[node.config.url] = [];
         }
     }
+    isRelocationOrEvictionRunning = true;
     foreach key, value in cacheEntries {
 
         if (value.replica){
@@ -80,25 +80,32 @@ function getChangedEntries() returns json {
             }
         }
     }
+    isRelocationOrEvictionRunning = false;
     return entries;
 }
 //Adds multiple entries to the cache.
 function storeMultipleEntries(json jsonObj) {
+    if (cacheCapacity <= lengthof cacheEntries + lengthof jsonObj){
+        evictEntries();
+    }
+    isRelocationOrEvictionRunning = true;
     foreach item in jsonObj {
         json nodeItem = item;
         string key = nodeItem["key"].toString();
         nodeItem.remove(key);
         cacheEntries[key] = check <CacheEntry>nodeItem;
     }
+    isRelocationOrEvictionRunning = false;
 }
 
 function evictEntries() {
-    int keyCountToEvict = <int>(CacheCapacity * cacheEvictionFactor);
+    int keyCountToEvict = <int>(cacheCapacity * cacheEvictionFactor);
     // Create new arrays to hold keys to be removed and hold the corresponding timestamps.
     string[] cacheKeysToBeRemoved = [];
     int[] timestamps = [];
     string[] keys = cacheEntries.keys();
     // Iterate through the keys.
+    isRelocationOrEvictionRunning = true;
     foreach key in keys {
         CacheEntry? cacheEntry = cacheEntries[key];
         match cacheEntry {
@@ -115,6 +122,7 @@ function evictEntries() {
             }
         }
     }
+
     // Return the array.
     //io:println(cacheKeysToBeRemoved);
 
@@ -168,6 +176,7 @@ function evictEntries() {
             }
         }
     }
+    isRelocationOrEvictionRunning = false;
 }
 
 

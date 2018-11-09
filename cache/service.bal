@@ -9,27 +9,27 @@ import ballerina/config;
 service<http:Service> api bind listener {
 //boolean initCacheVar = initCache();
     // Allows you to add a node to the cluster
-    @http:ResourceConfig {
-        methods: ["POST"],
-        path: "/node/add"
-    }
-    add(endpoint caller, http:Request req) {
-        json|error obj = req.getJsonPayload();
-        match obj {
-            json jsonObj => {
-                Node node = check <Node>jsonObj;
-                json jsonNodeList = addServer(node);
-                //TODO if Node exists
-                http:Response res = new;
-                res.setJsonPayload(untaint jsonNodeList);
-                caller->respond(res) but { error e => log:printError(
-                                                          "Error sending response", err = e) };
-            }
-            error err => {
-                log:printError("Error recieving response", err = err);
-            }
-        }
-    }
+    //@http:ResourceConfig {
+    //    methods: ["POST"],
+    //    path: "/node/add"
+    //}
+    //add(endpoint caller, http:Request req) {
+    //    json|error obj = req.getJsonPayload();
+    //    match obj {
+    //        json jsonObj => {
+    //            Node node = check <Node>jsonObj;
+    //            json jsonNodeList = addServer(node);
+    //            //TODO if Node exists
+    //            http:Response res = new;
+    //            res.setJsonPayload(untaint jsonNodeList);
+    //            caller->respond(res) but { error e => log:printError(
+    //                                                      "Error sending response", err = e) };
+    //        }
+    //        error err => {
+    //            log:printError("Error recieving response", err = err);
+    //        }
+    //    }
+    //}
 
     ////Allows you to remove a node from the cluster
     //@http:ResourceConfig {

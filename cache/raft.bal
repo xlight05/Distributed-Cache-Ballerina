@@ -54,7 +54,7 @@ type SuspectNode record {
 int SUSPECT_VALUE = config:getAsInt("failure.detector.suspect.value", default = 10);
 int FAILURE_TIMEOUT_MILS = config:getAsInt("failure.detector.timeout.millis", default = 1000);
 map<SuspectNode> suspectNodes;
-boolean isRelocationRunning;
+
 
 public function startRaft() {
     //cheat for first node lol

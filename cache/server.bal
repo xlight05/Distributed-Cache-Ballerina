@@ -176,7 +176,7 @@ service<http:Service> raft bind listener {
     }
     failCheckRPC(endpoint client, http:Request request) {
         string res;
-        if (isRelocationRunning) {
+        if (isRelocationOrEvictionRunning) {
             res = "true";
         } else {
             res = "false";

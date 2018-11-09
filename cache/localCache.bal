@@ -12,8 +12,6 @@ public type LocalCache object {
     map<LocalCacheEntry> entries;
     private float evictionFactor;
 
-
-
     public new(capacity = 100, evictionFactor = 0.25) {
         // Cache capacity must be a positive value.
         if (capacity <= 0) {
@@ -41,11 +39,11 @@ public type LocalCache object {
     public function put(string key, any value) {
         // We need to synchronize this process otherwise concurrecy might cause issues.
         lock {
-            int cacheCapacity = capacity;
+
             int cacheSize = lengthof entries;
 
             // If the current cache is full, evict cache.
-            if (cacheCapacity <= cacheSize) {
+            if (self.capacity <= cacheSize) {
                 evict();
             }
             // Add the new cache entry.
