@@ -349,70 +349,63 @@ function checkSuspectedNode(SuspectNode node) {
     if (state != "Leader") {
         return;
     }
-    http:Client? clients = getHealthyNode();
-    match clients {
-        http:Client client => {
-            io:println("Healthy Node :" + client.config.url);
-            blockingEp = client;
-            json req = { ip: node.client.config.url };
-            //change
-            //increase timeout
-            var resp = blockingEp->post("/raft/indirect/", req);
-            match resp {
-                http:Response payload => {
-                    json|error result = payload.getJsonPayload();
-                    match result {
-                        json j => {
-                            log:printInfo("Suspect rate of "+ node.ip + " : "+node.suspectRate);
-                            boolean status = check <boolean>j.status;
-                            if (status) {
-                                boolean relocate = check <boolean>j.relocate;
-                                if (!relocate) {
-                                    //not relocating just slow lol or up noww !
-                                    node.suspectRate = node.suspectRate - SUSPECT_VALUE;
-                                    if (node.suspectRate <= -50) {
-                                        //commit remove from suspect
-                                        boolean commited = clientRequest("NSR " + node.client.config.url);
-                                        log:printInfo(node.client.config.url + " Recovred from suspection "+commited);
-                                        //??commited
-                                        return;
-                                    }
-                                }
-                            } else {
-                                //not responding
-                                node.suspectRate = node.suspectRate + SUSPECT_VALUE;
-                                if (node.suspectRate >= 100) {
-                                    //commit dead
-                                    boolean commited = clientRequest("NR " + node.client.config.url);
-                                    log:printInfo(node.client.config.url + " Removed from the cluster");
-                                    return;
-                                }
+    http:Client client = getHealthyNode();
+    io:println("Healthy Node :" + client.config.url);
+    blockingEp = client;
+    json req = { ip: node.client.config.url };
+    //change
+    //increase timeout
+    var resp = blockingEp->post("/raft/indirect/", req);
+    match resp {
+        http:Response payload => {
+            json|error result = payload.getJsonPayload();
+            match result {
+                json j => {
+                    log:printInfo("Suspect rate of " + node.ip + " : " + node.suspectRate);
+                    boolean status = check <boolean>j.status;
+                    if (status) {
+                        boolean relocate = check <boolean>j.relocate;
+                        if (!relocate) {
+                            //not relocating just slow lol or up noww !
+                            node.suspectRate = node.suspectRate - SUSPECT_VALUE;
+                            if (node.suspectRate <= -50) {
+                                //commit remove from suspect
+                                boolean commited = clientRequest("NSR " + node.client.config.url);
+                                log:printInfo(node.client.config.url + " Recovred from suspection " + commited);
+                                //??commited
+                                return;
                             }
-                            runtime:sleep(FAILURE_TIMEOUT_MILS);
-                            checkSuspectedNode(node);
                         }
-                        error e => {
-                            log:printError("Error from Connector: " + e.message + "\n");
+                    } else {
+                        //not responding
+                        node.suspectRate = node.suspectRate + SUSPECT_VALUE;
+                        if (node.suspectRate >= 100) {
+                            //commit dead
+                            boolean commited = clientRequest("NR " + node.client.config.url);
+                            log:printInfo(node.client.config.url + " Removed from the cluster");
+                            return;
                         }
                     }
-
-                }
-                error err => {
-                    //if healthy node didnt respond
-                    log:printError("Healthy Node didn't respond: " + err.message + "\n");
                     runtime:sleep(FAILURE_TIMEOUT_MILS);
                     checkSuspectedNode(node);
+                }
+                error e => {
+                    log:printError("Error from Connector: " + e.message + "\n");
                 }
             }
 
         }
-        () => {
-            log:printWarn("No Healthy nodes. LOL");
+        error err => {
+            //if healthy node didnt respond
+            log:printError("Healthy Node didn't respond: " + err.message + "\n");
+            runtime:sleep(FAILURE_TIMEOUT_MILS);
+            checkSuspectedNode(node);
         }
     }
 }
 
-function getHealthyNode() returns http:Client? {
+function getHealthyNode() returns http:Client {
+    http:Client client;
     foreach i in clientMap {
         if (i.config.url == currentNode) {
             continue;
@@ -424,11 +417,17 @@ function getHealthyNode() returns http:Client? {
             }
         }
         if (!inSuspect) {
-            return i;
+            client = i;
         }
     }
+
     //if none return current Node ?
-    return ();
+    foreach i in clientMap {
+        if (i.config.url == currentNode) {
+            client = i;
+        }
+    }
+    return client;
 }
 
 function commitEntry() {
@@ -555,6 +554,12 @@ function addNode(string ip) returns ConfigChangeResponse {
 function apply(string command) {
     if (command.substring(0, 2) == "NA") { //NODE ADD
         string ip = command.split(" ")[1];
+        foreach item in clientMap { // temp. check heartbeat commiting agian
+            if (item.config.url == ip) {
+                return;
+            }
+        }
+
         //foreach item in clientMap { // temp. check heartbeat commiting agian
         //    if (item.config.url == ip) {
         //        return;
@@ -609,7 +614,8 @@ function apply(string command) {
         if (sucess) {
             _ = clientMap.remove(ip);
             hashRing.removeNode(ip);
-            relocateData(); // async?
+            relocateData();
+            // async?
             printSuspectedNodes();
             printClientNodes();
         }
@@ -619,7 +625,7 @@ function apply(string command) {
     log:printInfo(command + " Applied!!");
 }
 
-function printClientNodes(){
+function printClientNodes() {
     io:println("Client map list");
     foreach i in clientMap {
         io:println(i.config.url);
