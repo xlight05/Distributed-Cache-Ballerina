@@ -117,7 +117,7 @@ public type Consistent object {
                 }
                 return;
             }
-            idx++;
+            idx = idx +1;
             if (idx >= lengthof sortedSet){
                 idx = 0;
             }
@@ -160,8 +160,8 @@ public type Consistent object {
             string c = hex.substring(i, i + 1);
             int j = hexRep.indexOf(c);
             sum = <int>(sum + (math:pow(16.0, <float>counter)) * j);
-            counter--;
-            i++;
+            counter = counter -1;
+            i = i +1;
         }
         return sum;
     }
@@ -194,11 +194,11 @@ public type Consistent object {
             if (keys[idx] == ownerKey){
                 break;
             }
-            idx++;
+            idx = idx +1;
         }
 
         while (lengthof res < count) {
-            idx++;
+            idx =idx +1;
             if (idx >= lengthof keys){
                 idx = 0;
             }
