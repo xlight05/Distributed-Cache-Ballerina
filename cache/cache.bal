@@ -55,11 +55,8 @@ public function initNodeConfig() returns boolean {
     string[] configNodeList = hosts.split(",");
     io:println(configNodeList);
     if (configNodeList[0] == "") {
-        io:
-        println("In Create");
         createCluster();
     } else {
-        io:println("In Join");
         joinCluster(configNodeList);
     }
     return true;

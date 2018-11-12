@@ -68,6 +68,7 @@ function setReplicationFactor() {
 //}
 
 function relocateData() {
+
     json changedJson = getChangedEntries();
     foreach nodeItem in clientMap {
         string nodeIP = nodeItem.config.url;
@@ -75,7 +76,8 @@ function relocateData() {
             continue;
         }
         nodeEndpoint = nodeItem;
-
+        log:printInfo("Relocating data");
+        log:printInfo(changedJson.toString());
         var res = nodeEndpoint->post("/data/multiple/store/", untaint changedJson[nodeIP]);
         //sends changed entries to correct node
         match res {

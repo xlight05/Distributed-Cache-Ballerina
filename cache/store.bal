@@ -85,6 +85,7 @@ function getChangedEntries() returns json {
 }
 //Adds multiple entries to the cache.
 function storeMultipleEntries(json jsonObj) {
+    log:printInfo("Recieved entries");
     if (cacheCapacity <= lengthof cacheEntries + lengthof jsonObj){
         evictEntries();
     }

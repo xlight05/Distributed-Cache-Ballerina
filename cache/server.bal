@@ -227,9 +227,17 @@ function heartbeatHandle(AppendEntries appendEntry) returns AppendEntriesRespons
 
     }
     if (commitIndex > lastApplied) {
+        boolean isNodeChanged = false;
         foreach i in lastApplied + 1...commitIndex {
+            //To Reduce multiple relocation need better fix
+            if (log[i].command.substring(0, 2)=="NA" ||log[i].command.substring(0, 2)=="NR"){
+                isNodeChanged = true;
+            }
             apply(log[i].command);
             lastApplied = i;
+        }
+        if (isNodeChanged){
+            relocateData();
         }
     }
     true -> raftReadyChan;

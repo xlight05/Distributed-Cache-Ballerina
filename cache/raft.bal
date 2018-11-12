@@ -448,6 +448,10 @@ function commitEntry() {
         if (replicatedCount >= math:ceil(lengthof clientMap / 2.0)) {
             commitIndex = item;
             apply(log[item].command);
+            //To Reduce multiple relocation need better fix
+            if (log[item].command.substring(0, 2)=="NA" ||log[item].command.substring(0, 2)=="NR"){
+                relocateData();
+            }
             break;
         }
         item = item - 1;
@@ -568,7 +572,7 @@ function apply(string command) {
         http:Client client;
         http:ClientEndpointConfig cc = {
             url: ip,
-            timeoutMillis: HEARTBEAT_TIMEOUT / 3
+            timeoutMillis: MIN_ELECTION_TIMEOUT / 3
             //retryConfig: {
             //    interval: HEARTBEAT_TIMEOUT/2,
             //    count: 1,
@@ -581,7 +585,7 @@ function apply(string command) {
         nextIndex[ip] = 1;
         matchIndex[ip] = 0;
         hashRing.add(ip);
-        relocateData();
+        //relocateData();
         // async?  //incositant while catching up a new node?
     }
 
@@ -614,7 +618,7 @@ function apply(string command) {
         if (sucess) {
             _ = clientMap.remove(ip);
             hashRing.removeNode(ip);
-            relocateData();
+            //relocateData();
             // async?
             printSuspectedNodes();
             printClientNodes();
