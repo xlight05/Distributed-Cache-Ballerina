@@ -229,7 +229,7 @@ service<http:Service> api bind listener {
         methods: ["DELETE"],
         path: "/data/evict"
     }
-    evictData(endpoint caller, http:Request req) {
+    evictData(endpoint caller, http:Request req) { //replicas only !!
         json|error jsonData = req.getJsonPayload();
         string[] strArr;
         match jsonData {

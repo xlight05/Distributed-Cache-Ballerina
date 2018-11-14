@@ -347,7 +347,8 @@ public type Cache object {
             }
         }
         string nodeIP = hashRing.get(key);
-        var msg = getEntryFromServer(nodeIP, key);
+        string originalKey = "O:"+key;
+        var msg = getEntryFromServer(nodeIP, originalKey);
         match msg {
             json jsonPayload => {
                 if (jsonPayload.value != null) {
@@ -363,12 +364,13 @@ public type Cache object {
             error err => {
                 log:printError(err.message, err = err);
                 string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
+                string replicaKey = "R:"+key;
                 future <json|error> [] replicaNodeFutures;
                 foreach node in replicaNodes {
                     if (node == nodeIP) {
                         continue;
                     }
-                    replicaNodeFutures[lengthof replicaNodeFutures] =start getEntryFromServer(node, key);
+                    replicaNodeFutures[lengthof replicaNodeFutures] =start getEntryFromServer(node, replicaKey);
                 }
                 foreach replicaFuture in replicaNodeFutures {
                     json|error response =await replicaFuture;
