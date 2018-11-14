@@ -5,6 +5,7 @@ import ballerina/log;
 import ballerina/config;
 
 //TODO Ensure node wont go out of memory. Since we cant ensure max size per object I dont think capacity is a good choice.
+//TODO Cache entry loses when replica and original both have the same id. TIP - put replica, original sign to the key.
 endpoint http:Client nodeEndpoint {
     url: "http://localhost:" + config:getAsString("cache.port", default = "7000")
 };
@@ -49,7 +50,7 @@ boolean isRelocationOrEvictionRunning = false;
 //channel<boolean> raftReady;
 //channel<boolean> cacheReady;
 
-public function initNodeConfig() returns boolean {
+public function initNodeConfig() {
     //Suggestion rest para array suppot for config API
     string hosts = config:getAsString("cache.hosts");
     string[] configNodeList = hosts.split(",");
@@ -59,7 +60,6 @@ public function initNodeConfig() returns boolean {
     } else {
         joinCluster(configNodeList);
     }
-    return true;
 }
 
 #Allows uesrs to create the cluster
@@ -210,20 +210,28 @@ public type Cache object {
     //CacheConfig config;
 
     public new(name) {
-        if (cacheMap.hasKey(name)) {
-            return;
-        }
-        var cacheVar = getCache(name);
-
-        match cacheVar {
+        initNodeConfig(); // not the best choice -,- should init before this
+        var cc = cacheMap[name];
+        match cc {
             Cache cache => {
                 self = cache;
                 log:printInfo("Cache Found- " + self.name);
+                return;
             }
             () => {
-                cacheMap[name] = self;
-                log:printInfo("Cache Created " + name);
-                return;
+                var cacheVar = getCache(name);
+
+                match cacheVar {
+                    Cache cache => {
+                        self = cache;
+                        log:printInfo("Cache Found- " + self.name);
+                    }
+                    () => {
+                        cacheMap[name] = self;
+                        log:printInfo("Cache Created " + name);
+                        return;
+                    }
+                }
             }
         }
     }

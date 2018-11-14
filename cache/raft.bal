@@ -328,13 +328,18 @@ function heartbeatChannel(http:Client node) {
                 }
             }
             if (!found) {
-                boolean commited = clientRequest("NSA " + node.config.url);
+                http:Client client;
+                http:ClientEndpointConfig cc = { url: node.config.url, timeoutMillis: 60000 };
+                client.init(cc);
+                SuspectNode sNode = { ip: node.config.url, client: client, suspectRate: 0 };
+                suspectNodes[node.config.url] = sNode;
+                boolean commited = clientRequest("NSA " + node.config.url); // cant commit here, if doesnt hv majority wut to do
                 log:printInfo(node.config.url + " added to suspect list");
                 //commited?
             }
         }
     }
-    commitEntry();
+    //commitEntry();
 }
 
 function startProcessingSuspects() {
@@ -449,7 +454,7 @@ function commitEntry() {
             commitIndex = item;
             apply(log[item].command);
             //To Reduce multiple relocation need better fix
-            if (log[item].command.substring(0, 2)=="NA" ||log[item].command.substring(0, 2)=="NR"){
+            if (log[item].command.substring(0, 2) == "NA" || log[item].command.substring(0, 2) == "NR") {
                 relocateData();
             }
             break;
@@ -523,7 +528,7 @@ function clientRequest(string command) returns boolean {
         int entryIndex = lengthof log;
         log[entryIndex] = { term: currentTerm, command: command };
         future ee = start sendHeartbeats();
-        _ = await ee;
+        _ = await ee; //without majority no nop :S
         //check if commited moree
         if (commitIndex >= entryIndex) {
             return true;
@@ -572,13 +577,13 @@ function apply(string command) {
         http:Client client;
         http:ClientEndpointConfig cc = {
             url: ip,
-            timeoutMillis: MIN_ELECTION_TIMEOUT / 3
-            //retryConfig: {
-            //    interval: HEARTBEAT_TIMEOUT/2,
-            //    count: 1,
-            //    backOffFactor: 1.0,
-            //    maxWaitInterval: HEARTBEAT_TIMEOUT/2
-            //}
+            timeoutMillis: MIN_ELECTION_TIMEOUT / 3,
+            retryConfig: {
+                interval: HEARTBEAT_TIMEOUT/3,
+                count: 1,
+                backOffFactor: 1.0,
+                maxWaitInterval: HEARTBEAT_TIMEOUT/3
+            }
         };
         client.init(cc);
         clientMap[ip] = client;
@@ -591,11 +596,11 @@ function apply(string command) {
 
     if (command.substring(0, 3) == "NSA") { //NODE SUSPECT Add
         string ip = command.split(" ")[1];
-        foreach item in suspectNodes { // temp. check heartbeat commiting agian
-            if (item.ip == ip) {
-                return;
-            }
-        }
+        //foreach item in suspectNodes { // temp. check heartbeat commiting agian
+        //    if (item.ip == ip) {
+        //        return;
+        //    }
+        //}
         http:Client client;
         http:ClientEndpointConfig cc = { url: ip, timeoutMillis: 60000 };
         client.init(cc);

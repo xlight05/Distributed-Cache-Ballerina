@@ -68,7 +68,6 @@ function setReplicationFactor() {
 //}
 
 function relocateData() {
-
     json changedJson = getChangedEntries();
     foreach nodeItem in clientMap {
         string nodeIP = nodeItem.config.url;

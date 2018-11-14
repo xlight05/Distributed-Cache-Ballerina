@@ -6,7 +6,7 @@ import cache;
 @test:BeforeSuite
 function init() {
     io:println("I'm the before suite function!");
-        _ =cache:initNodeConfig();
+    //    _ =cache:initNodeConfig();
     cache:Cache oauthCache = new("testCache");
 }
 

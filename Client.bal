@@ -8,7 +8,7 @@ import ballerina/config;
 public function main(string... args) {
 
     //cache:createCluster();
-    _ = cache:initNodeConfig();
+    //_ = cache:initNodeConfig();
     cache:Cache oauthCache = new("oauthCache");
 
     //oauthCache.put("Name", "Ballerina");

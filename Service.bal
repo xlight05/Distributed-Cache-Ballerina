@@ -25,7 +25,6 @@ service<http:Service> api bind listen {
         json|error obj = req.getJsonPayload();
         match obj {
             json jsonObj => {
-                _=cache:initNodeConfig();
                 string cache = untaint check <string> jsonObj["cache"];
                  match activeCache {
                      cache:Cache c=> {
