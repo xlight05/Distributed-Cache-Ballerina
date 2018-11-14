@@ -333,7 +333,8 @@ function heartbeatChannel(http:Client node) {
                 client.init(cc);
                 SuspectNode sNode = { ip: node.config.url, client: client, suspectRate: 0 };
                 suspectNodes[node.config.url] = sNode;
-                boolean commited = clientRequest("NSA " + node.config.url); // cant commit here, if doesnt hv majority wut to do
+                boolean commited = clientRequest("NSA " + node.config.url);
+                // cant commit here, if doesnt hv majority wut to do
                 log:printInfo(node.config.url + " added to suspect list");
                 //commited?
             }
@@ -528,7 +529,8 @@ function clientRequest(string command) returns boolean {
         int entryIndex = lengthof log;
         log[entryIndex] = { term: currentTerm, command: command };
         future ee = start sendHeartbeats();
-        _ = await ee; //without majority no nop :S
+        _ = await ee;
+        //without majority no nop :S
         //check if commited moree
         if (commitIndex >= entryIndex) {
             return true;
@@ -579,10 +581,10 @@ function apply(string command) {
             url: ip,
             timeoutMillis: MIN_ELECTION_TIMEOUT / 3,
             retryConfig: {
-                interval: HEARTBEAT_TIMEOUT/3,
+                interval: HEARTBEAT_TIMEOUT / 3,
                 count: 1,
                 backOffFactor: 1.0,
-                maxWaitInterval: HEARTBEAT_TIMEOUT/3
+                maxWaitInterval: HEARTBEAT_TIMEOUT / 3
             }
         };
         client.init(cc);
@@ -647,14 +649,3 @@ function printSuspectedNodes() {
         io:println(i.ip);
     }
 }
-// function isQuoram(int count) returns boolean {
-//     if (count==0){
-//         return true;
-//     }
-
-
-// function isQuoram(int count) returns boolean {
-//     if (count==0){
-//         return true;
-//     }
-// }

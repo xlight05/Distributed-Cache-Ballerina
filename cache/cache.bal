@@ -95,7 +95,6 @@ public function joinCluster(string[] nodeIPs) {
                     log:printInfo("No " + node + " is not the leader");
                     string[] leaderIP;
                     leaderIP[0] = result.leaderHint;
-
                     joinCluster(leaderIP);
                     return;
                 }
@@ -105,45 +104,8 @@ public function joinCluster(string[] nodeIPs) {
             }
         }
     }
-
-    //string currentIpWithPort = currentNode.ip;
-    ////server list json init
-    ////json serverList = { "0": check <json>currentNode };
-    //string [] serverListArr = [currentNode.ip];
-    ////sending requests for existing nodes
-    //foreach node in nodeIPs {
-    //    //changing the url of client endpoint
-    //    http:ClientEndpointConfig config = { url: node };
-    //    nodeEndpoint.init(config);
-    //
-    //    json serverDetailsJSON = <json>currentNode;
-    //    var response = nodeEndpoint->post("/node/add", untaint serverDetailsJSON);
-    //
-    //    match response {
-    //        http:Response resp => {
-    //            var msg = resp.getJsonPayload();
-    //            match msg {
-    //                json jsonPayload => {
-    //                    serverListArr = check<string []>jsonPayload;
-    //                }
-    //                error err => {
-    //                    log:printError(err.message, err = err);
-    //                }
-    //            }
-    //        }
-    //        error err => {
-    //            log:printError(err.message, err = err);
-    //        }
-    //    }
-    //}
-    ////Setting local node list
-    //foreach item in serverListArr{
-    //    http:Client client;
-    //    http:ClientEndpointConfig cc = { url: item };
-    //    client.init(cc);
-    //    clientMap[item] = client;
-    //}
-    //setServers();
+    runtime:sleep(1000);
+    joinCluster(nodeIPs);
 }
 
 
@@ -436,15 +398,6 @@ public type Cache object {
         }
     }
 
-    // public function size() returns int {
-    //     return lengthof entries;
-    // }
-    // public function hasKey(string key) returns boolean {
-    //     return entries.hasKey(key);
-    // }
-
-
-
     public function locateNode(string key) {
         io:println(key + " located in ");
         io:println(hashRing.get(key));
@@ -485,7 +438,7 @@ public type Cache object {
 
 
 
-    # Returns the cached value associated with the given key. If the provided cache key is not found in the cluster, () will be returned.
+# Returns the cached value associated with the given key. If the provided cache key is not found in the cluster, () will be returned.
 #
 # + key - key which is used to remove the entry
 public function remove(string key) {

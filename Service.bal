@@ -16,7 +16,6 @@ cache:Cache? activeCache;
 @http:ServiceConfig { basePath: "/api" }
 service<http:Service> api bind listen {
 
-
     @http:ResourceConfig {
         methods: ["POST"],
         path: "/cache"
@@ -25,23 +24,23 @@ service<http:Service> api bind listen {
         json|error obj = req.getJsonPayload();
         match obj {
             json jsonObj => {
-                string cache = untaint check <string> jsonObj["cache"];
-                 match activeCache {
-                     cache:Cache c=> {
+                string cache = untaint check <string>jsonObj["cache"];
+                match activeCache {
+                    cache:Cache c => {
                         activeCache = new cache:Cache(cache);
-                     }
-                     () => {
+                    }
+                    () => {
                         activeCache = new cache:Cache(cache);
-                     }
-                 }
+                    }
+                }
                 //activeCache = activeCache but {() => new cache:Cache(cache)};
                 //activeCache = new cache:Cache(cache);
                 http:Response res = new;
                 json testJson = { "message": "Cache Active", "status": 200 };
                 res.setJsonPayload(untaint testJson);
 
-        caller->respond(res) but { error e => log:printError(
-                                                  "Error sending response", err = e) };
+                caller->respond(res) but { error e => log:printError(
+                                                          "Error sending response", err = e) };
             }
             error err => {
                 log:printError("Error recieving response", err = err);
@@ -57,15 +56,15 @@ service<http:Service> api bind listen {
         json|error obj = req.getJsonPayload();
         match obj {
             json jsonObj => {
-                string key = untaint check <string> jsonObj["key"];
-                string value = untaint check <string> jsonObj["value"];
+                string key = untaint check <string>jsonObj["key"];
+                string value = untaint check <string>jsonObj["value"];
                 activeCache.put(key, value);
                 http:Response res = new;
                 json testJson = { "message": "Entry Added", "status": 200 };
                 res.setJsonPayload(untaint testJson);
 
-        caller->respond(res) but { error e => log:printError(
-                                                  "Error sending response", err = e) };
+                caller->respond(res) but { error e => log:printError(
+                                                          "Error sending response", err = e) };
             }
             error err => {
                 log:printError("Error recieving response", err = err);
@@ -80,15 +79,15 @@ service<http:Service> api bind listen {
     }
     get(endpoint caller, http:Request req, string key) {
         http:Response res = new;
-        any? x =untaint activeCache.get(key);
+        any? x = untaint activeCache.get(key);
         //any x =  "";
         //json y = {key:x};
-        string value = <string> x;
+        string value = <string>x;
         json resp;
-        if (value!=null){
-           resp ={"key":key,"value":value};
-        }else {
-            resp = {"key":null,"value":null};
+        if (value != null) {
+            resp = { "key": key, "value": value };
+        } else {
+            resp = { "key": null, "value": null };
         }
 
         io:println(value);
@@ -106,14 +105,14 @@ service<http:Service> api bind listen {
         json|error obj = req.getJsonPayload();
         match obj {
             json jsonObj => {
-                string key = untaint check <string> jsonObj["key"];
+                string key = untaint check <string>jsonObj["key"];
                 activeCache.remove(key);
                 http:Response res = new;
                 json testJson = { "message": "Entry removed", "status": 200 };
                 res.setJsonPayload(untaint testJson);
 
-        caller->respond(res) but { error e => log:printError(
-                                                  "Error sending response", err = e) };
+                caller->respond(res) but { error e => log:printError(
+                                                          "Error sending response", err = e) };
             }
             error err => {
                 log:printError("Error recieving response", err = err);

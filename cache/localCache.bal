@@ -26,7 +26,6 @@ public type LocalCache object {
     }
 
 
-
     public function hasKey(string key) returns (boolean) {
         return entries.hasKey(key);
     }
@@ -69,7 +68,7 @@ public type LocalCache object {
 
     public function get(string key) returns any? {
         // Check whether the requested cache is available.
-        if (!hasKey(key)){
+        if (!hasKey(key)) {
             return ();
         }
         // Get the requested cache entry from the map.

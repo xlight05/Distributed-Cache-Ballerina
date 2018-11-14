@@ -7,7 +7,7 @@ import ballerina/config;
 
 @http:ServiceConfig { basePath: "/" }
 service<http:Service> api bind listener {
-//boolean initCacheVar = initCache();
+    //boolean initCacheVar = initCache();
     // Allows you to add a node to the cluster
     //@http:ResourceConfig {
     //    methods: ["POST"],
@@ -98,8 +98,8 @@ service<http:Service> api bind listener {
         json jsObj;
         match obj {
             json jsonObj => {
-                 boolean status = cacheEntries.remove(jsonObj["key"].toString());
-                jsObj = {"status":status};
+                boolean status = cacheEntries.remove(jsonObj["key"].toString());
+                jsObj = { "status": status };
             }
             error err => {
                 log:printError("Error recieving response", err = err);
@@ -197,7 +197,7 @@ service<http:Service> api bind listener {
     cacheGet(endpoint caller, http:Request req, string key) {
         http:Response res = new;
         json resp;
-        if (cacheMap.hasKey(key)){
+        if (cacheMap.hasKey(key)) {
             resp = check <json>cacheMap[key];
         }
         else {

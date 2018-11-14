@@ -26,16 +26,16 @@ function getCacheEntry(string key) returns json {
 
 //Adds a single cache entry to the store
 function setCacheEntry(json jsObj) returns json {
-    if (cacheCapacity <= lengthof cacheEntries ){
+    if (cacheCapacity <= lengthof cacheEntries) {
         evictEntries();
     }
-    boolean isReplica= check <boolean> jsObj["replica"];
+    boolean isReplica = check <boolean>jsObj["replica"];
     string key;
     //jsObj.remove(key);
-    if (isReplica){
-         key = "R:"+jsObj["key"].toString();
-    }else {
-        key = "O:"+jsObj["key"].toString();
+    if (isReplica) {
+        key = "R:" + jsObj["key"].toString();
+    } else {
+        key = "O:" + jsObj["key"].toString();
     }
     cacheEntries[key] = check <CacheEntry>jsObj;
     return jsObj;
@@ -53,18 +53,18 @@ function getChangedEntries() returns json {
     string currentNodeIP = currentNode;
     //Node catagorize
     foreach node in clientMap {
-        if (node.config.url != currentNodeIP){
+        if (node.config.url != currentNodeIP) {
             entries[node.config.url] = [];
         }
     }
     isRelocationOrEvictionRunning = true;
     foreach key, value in cacheEntries {
 
-        if (value.replica){
+        if (value.replica) {
             string[] replicaNodes = hashRing.GetClosestN(value.key, replicationFact);
             boolean remove = true;
             foreach item in replicaNodes {
-                if (item != currentNodeIP){
+                if (item != currentNodeIP) {
                     //value["key"] = key;
                     entries[item][lengthof entries[item]] = check <json>value;
                 }
@@ -72,14 +72,14 @@ function getChangedEntries() returns json {
                     remove = false;
                 }
             }
-            if (remove){
+            if (remove) {
                 _ = cacheEntries.remove(key);
             }
 
         } else {
             string correctNodeIP = hashRing.get(value.key);
             //Checks if the node is changed
-            if (correctNodeIP != currentNodeIP){
+            if (correctNodeIP != currentNodeIP) {
                 //value["key"] = key;
                 entries[correctNodeIP][lengthof entries[correctNodeIP]] = check <json>value;
                 _ = cacheEntries.remove(key); //Assuming the response was recieved :/
@@ -92,18 +92,18 @@ function getChangedEntries() returns json {
 //Adds multiple entries to the cache.
 function storeMultipleEntries(json jsonObj) {
     log:printInfo("Recieved entries");
-    log:printInfo (jsonObj.toString());
-    if (cacheCapacity <= lengthof cacheEntries + lengthof jsonObj){
+    log:printInfo(jsonObj.toString());
+    if (cacheCapacity <= lengthof cacheEntries + lengthof jsonObj) {
         evictEntries();
     }
     isRelocationOrEvictionRunning = true;
     foreach nodeItem in jsonObj {
-        boolean isReplica= check <boolean> nodeItem["replica"];
+        boolean isReplica = check <boolean>nodeItem["replica"];
         string key;
-        if (isReplica){
-            key = "R:"+nodeItem["key"].toString();
-        }else {
-            key = "O:"+nodeItem["key"].toString();
+        if (isReplica) {
+            key = "R:" + nodeItem["key"].toString();
+        } else {
+            key = "O:" + nodeItem["key"].toString();
         }
 
         //nodeItem.remove(key);
@@ -137,12 +137,12 @@ function evictEntries() {
     //        }
     //    }
     //}
-    foreach key,value in cacheEntries {
-                    if (value.replica){
-                        continue;
-                    }
-                    // Check and add the key to the cacheKeysToBeRemoved if it matches the conditions.
-                    checkAndAddEntries(keyCountToEvict, cacheKeysToBeRemoved, timestamps, key, value.lastAccessedTime);
+    foreach key, value in cacheEntries {
+        if (value.replica) {
+            continue;
+        }
+        // Check and add the key to the cacheKeysToBeRemoved if it matches the conditions.
+        checkAndAddEntries(keyCountToEvict, cacheKeysToBeRemoved, timestamps, key, value.lastAccessedTime);
     }
 
     // Return the array.
@@ -152,7 +152,7 @@ function evictEntries() {
     string currentNodeIP = currentNode;
     //Node catagorize
     foreach node in clientMap{
-        if (node.config.url != currentNodeIP){
+        if (node.config.url != currentNodeIP) {
             entries[node.config.url] = [];
         }
     }
@@ -162,18 +162,18 @@ function evictEntries() {
         // CacheEntry default;
         // CacheEntry obj = cacheEntries[c] ?: default;
         foreach node in replicaNodes {
-            if (node != currentNodeIP){
+            if (node != currentNodeIP) {
                 //value["key"] = key;
                 //json test = {key:c};
-                entries[node][lengthof entries[node]] = "R:"+c;
+                entries[node][lengthof entries[node]] = "R:" + c;
             }
         }
-        _ = cacheEntries.remove("O:"+c);
+        _ = cacheEntries.remove("O:" + c);
         log:printInfo(c + " Entry Evicted");
     }
     io:println(entries);
     foreach nodeItem in clientMap {
-        if (nodeItem.config.url == currentNode){ //Ignore if its the current node
+        if (nodeItem.config.url == currentNode) { //Ignore if its the current node
             continue;
         }
 
@@ -202,8 +202,9 @@ function evictEntries() {
 }
 
 
-function checkAndAddEntries(int numberOfKeysToEvict, string[] cacheKeys, int[] timestamps, string key, int lastAccessTime) {
-    string plainKey = key.substring(2,lengthof key);
+function checkAndAddEntries(int numberOfKeysToEvict, string[] cacheKeys, int[] timestamps, string key, int
+    lastAccessTime) {
+    string plainKey = key.substring(2, lengthof key);
     int myLastAccessTime = lastAccessTime;
 
     // Iterate while we count all values from 0 to numberOfKeysToEvict exclusive of numberOfKeysToEvict since the

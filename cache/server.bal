@@ -161,7 +161,7 @@ service<http:Service> raft bind listener {
                 j1 = { "status": false, "relocate": false };
             }
         }
-        log:printInfo("Indirect ping for "+blockingEp.config.url+" Server Status : "+j1["status"].toString());
+        log:printInfo("Indirect ping for " + blockingEp.config.url + " Server Status : " + j1["status"].toString());
         http:Response response;
         response.setJsonPayload(j1);
 
@@ -213,7 +213,7 @@ function heartbeatHandle(AppendEntries appendEntry) returns AppendEntriesRespons
         if (sucess) {
             index = appendEntry.prevLogIndex;
             foreach i in appendEntry.entries{
-                index = index +1;
+                index = index + 1;
                 if (getTerm(index) != i.term) {
                     log[index - 1] = i;//not sure
                 }
@@ -230,13 +230,13 @@ function heartbeatHandle(AppendEntries appendEntry) returns AppendEntriesRespons
         boolean isNodeChanged = false;
         foreach i in lastApplied + 1...commitIndex {
             //To Reduce multiple relocation need better fix
-            if (log[i].command.substring(0, 2)=="NA" ||log[i].command.substring(0, 2)=="NR"){
+            if (log[i].command.substring(0, 2) == "NA" || log[i].command.substring(0, 2) == "NR") {
                 isNodeChanged = true;
             }
             apply(log[i].command);
             lastApplied = i;
         }
-        if (isNodeChanged){
+        if (isNodeChanged) {
             relocateData();
         }
     }
@@ -312,60 +312,3 @@ function getTerm(int index) returns int {
         return log[index].term;
     }
 }
-
-//function initRaft() returns boolean {
-//    io:println("In init raft");
-//    true -> raftReady;
-//    return true;
-//}
-
-//service raft bind listener {
-//    //Internal
-//    voteResponseRPC(endpoint caller, VoteRequest voteReq, grpc:Headers headers) {
-//        log:printInfo("Vote request came from " + voteReq.candidateID);
-//        boolean granted = voteResponseHandle(voteReq);
-//        VoteResponse res = { granted: granted, term: currentTerm };
-//        error? err = caller->send(res);
-//        log:printInfo(err.message but { () => "vote response " +
-//                res.term + " " + res.granted });
-//
-//        _ = caller->complete();
-//    }
-//    appendEntriesRPC(endpoint caller, AppendEntries appendEntry, grpc:Headers headers) {
-//        log:printInfo("AppendRPC request came from " + appendEntry.leaderID);
-//        AppendEntriesResponse res = heartbeatHandle(appendEntry);
-//        error? err = caller->send(res);
-//        log:printInfo(err.message but { () => "Append RPC response " +
-//                res.term + " " + res.sucess });
-//        _ = caller->complete();
-//    }
-//
-//    //External
-//    addServerRPC(endpoint caller, string ip, grpc:Headers headers) {
-//        ConfigChangeResponse res = addNode(ip);
-//        error? err = caller->send(res);
-//        log:printInfo(err.message but { () => "Add server response : " +
-//                res.sucess + " " + res.leaderHint });
-//
-//        _ = caller->complete();
-//    }
-//
-//    clientRequestRPC(endpoint caller, string command, grpc:Headers headers) {
-//        boolean sucess = clientRequest(command);
-//        ConfigChangeResponse res = { sucess: sucess, leaderHint: leader };
-//        error? err = caller->send(res);
-//        log:printInfo(err.message but { () => "Client RPC Response : " +
-//                res.sucess + " " + res.leaderHint });
-//
-//        _ = caller->complete();
-//    }
-//    failCheckRPC(endpoint caller, string command, grpc:Headers headers) {
-//        boolean sucess = clientRequest(command);
-//        ConfigChangeResponse res = { sucess: sucess, leaderHint: leader };
-//        error? err = caller->send(res);
-//        log:printInfo(err.message but { () => "Client RPC Response : " +
-//                res.sucess + " " + res.leaderHint });
-//
-//        _ = caller->complete();
-//    }
-//}
