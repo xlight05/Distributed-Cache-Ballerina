@@ -5,7 +5,7 @@ Distributed Cache for ballerina
 
 | Ballerina Version  |
 |:------------------:|
-| 0.981.1            |
+| 0.983.0            |
 
 ### Features
 

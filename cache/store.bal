@@ -72,7 +72,7 @@ function getChangedEntries() returns json {
                     remove = false;
                 }
             }
-            if (remove) {
+            if (remove) {//TODO Remove after recieved response
                 _ = cacheEntries.remove(key);
             }
 
@@ -91,28 +91,30 @@ function getChangedEntries() returns json {
 }
 //Adds multiple entries to the cache.
 function storeMultipleEntries(json jsonObj) {
-    log:printInfo("Recieved entries");
-    log:printInfo(jsonObj.toString());
+    log:printInfo("Recieved entries"+jsonObj.toString());
     if (cacheCapacity <= lengthof cacheEntries + lengthof jsonObj) {
         evictEntries();
+        //use cannels to evict and store at the same time
     }
-    isRelocationOrEvictionRunning = true;
-    foreach nodeItem in jsonObj {
-        boolean isReplica = check <boolean>nodeItem["replica"];
-        string key;
-        if (isReplica) {
-            key = "R:" + nodeItem["key"].toString();
-        } else {
-            key = "O:" + nodeItem["key"].toString();
+    lock{
+        isRelocationOrEvictionRunning = true;
+        foreach nodeItem in jsonObj {
+            boolean isReplica = check <boolean>nodeItem["replica"];
+            string key;
+            if (isReplica) {
+                key = "R:" + nodeItem["key"].toString();
+            } else {
+                key = "O:" + nodeItem["key"].toString();
+            }
+
+            //nodeItem.remove(key);
+            cacheEntries[key] = check <CacheEntry>nodeItem;
         }
-
-        //nodeItem.remove(key);
-        cacheEntries[key] = check <CacheEntry>nodeItem;
+        isRelocationOrEvictionRunning = false;
     }
-    isRelocationOrEvictionRunning = false;
-}
+    }
 
-//TODO FIX according to new cache entry ids.
+
 function evictEntries() {
     int keyCountToEvict = <int>(cacheCapacity * cacheEvictionFactor);
     // Create new arrays to hold keys to be removed and hold the corresponding timestamps.

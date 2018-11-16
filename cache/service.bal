@@ -7,54 +7,6 @@ import ballerina/config;
 
 @http:ServiceConfig { basePath: "/" }
 service<http:Service> api bind listener {
-    //boolean initCacheVar = initCache();
-    // Allows you to add a node to the cluster
-    //@http:ResourceConfig {
-    //    methods: ["POST"],
-    //    path: "/node/add"
-    //}
-    //add(endpoint caller, http:Request req) {
-    //    json|error obj = req.getJsonPayload();
-    //    match obj {
-    //        json jsonObj => {
-    //            Node node = check <Node>jsonObj;
-    //            json jsonNodeList = addServer(node);
-    //            //TODO if Node exists
-    //            http:Response res = new;
-    //            res.setJsonPayload(untaint jsonNodeList);
-    //            caller->respond(res) but { error e => log:printError(
-    //                                                      "Error sending response", err = e) };
-    //        }
-    //        error err => {
-    //            log:printError("Error recieving response", err = err);
-    //        }
-    //    }
-    //}
-
-    ////Allows you to remove a node from the cluster
-    //@http:ResourceConfig {
-    //    methods: ["DELETE"],
-    //    path: "/node/remove"
-    //}
-    //remove(endpoint caller, http:Request req) {
-    //
-    //    http:Response res = new;
-    //    boolean isRemoved = removeServer("test");
-    //    if (isRemoved){
-    //        json testJson = { "message": "Node Removed", "status": 200 };
-    //
-    //        res.setJsonPayload(testJson);
-    //        caller->respond(res) but { error e => log:printError(
-    //                                                  "Error sending response", err = e) };
-    //    }
-    //    else {
-    //        json testJson = { "message": "Node not found", "status": 500 };
-    //
-    //        res.setJsonPayload(testJson);
-    //        caller->respond(res) but { error e => log:printError(
-    //                                                  "Error sending response", err = e) };
-    //    }
-    //}
 
     //Allows you to list the nodes from the cluster
     @http:ResourceConfig {

@@ -21,31 +21,33 @@ function setReplicationFactor() {
 }
 
 function relocateData() {
-    json changedJson = getChangedEntries();
-    foreach nodeItem in clientMap {
-        string nodeIP = nodeItem.config.url;
-        if (nodeIP == currentNode){ //Ignore if its the current node
-            continue;
-        }
-        nodeEndpoint = nodeItem;
-        log:printInfo("Relocating data");
-        log:printInfo(changedJson.toString());
-        var res = nodeEndpoint->post("/data/multiple/store/", untaint changedJson[nodeIP]);
-        //sends changed entries to correct node
-        match res {
-            http:Response resp => {
-                var msg = resp.getJsonPayload();
-                match msg {
-                    json jsonPayload => {
-                        log:printInfo("Entries sent to " + nodeIP);
-                    }
-                    error err => {
-                        log:printError(err.message, err = err);
+    lock{
+        json changedJson = getChangedEntries();
+        foreach nodeItem in clientMap {
+            string nodeIP = nodeItem.config.url;
+            if (nodeIP == currentNode){ //Ignore if its the current node
+                continue;
+            }
+            nodeEndpoint = nodeItem;
+            log:printInfo("Relocating data"+changedJson.toString());
+            var res = nodeEndpoint->post("/data/multiple/store/", untaint changedJson[nodeIP]);
+            //sends changed entries to correct node
+            match res {
+                http:Response resp => {
+                    var msg = resp.getJsonPayload();
+                    match msg {
+                        json jsonPayload => {
+                            //TODO Remove after recieved response
+                            log:printInfo("Entries sent to " + nodeIP);
+                        }
+                        error err => {
+                            log:printError(err.message, err = err);
+                        }
                     }
                 }
-            }
-            error err => {
-                log:printError(err.message, err = err);
+                error err => {
+                    log:printError(err.message, err = err);
+                }
             }
         }
     }

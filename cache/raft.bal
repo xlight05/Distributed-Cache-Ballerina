@@ -11,7 +11,6 @@ import ballerina/http;
 //TODO LOCKS
 //TODO LAG Test
 //TODO Partition Test
-//TODO Merge with cache
 
 
 //endpoint raftBlockingClient blockingEp {
@@ -402,7 +401,7 @@ function checkSuspectedNode(SuspectNode node) {
 
         }
         error err => {
-            //if healthy node didnt respond
+            //if healthy node didnt respond //could be  be coz of packet loss
             log:printError("Healthy Node didn't respond: " + err.message + "\n");
             runtime:sleep(FAILURE_TIMEOUT_MILS);
             checkSuspectedNode(node);

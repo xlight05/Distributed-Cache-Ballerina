@@ -5,7 +5,10 @@ import ballerina/log;
 import ballerina/config;
 
 //TODO Ensure node wont go out of memory. Since we cant ensure max size per object I dont think capacity is a good choice.
-//TODO Cache entry loses when replica and original both have the same id. TIP - put replica, original sign to the key.
+//TODO Healthchecks for accurate config values  | Packet loss -> higher retries , higher timeout |
+//TODO Better service discovery
+//TODO Improve retry mechanisms of put,get,remove
+//TODO Set smaller timeouts with retries for put get remove.
 endpoint http:Client nodeEndpoint {
     url: "http://localhost:" + config:getAsString("cache.port", default = "7000")
 };
@@ -76,7 +79,7 @@ public function createCluster() {
 public function joinCluster(string[] nodeIPs) {
     //improve resiliancy
     //when leader is not appointed
-    //when target is not leader
+    //when target is not leader ""
     //fix recurse
     foreach node in nodeIPs {
         http:Client client;
@@ -95,6 +98,9 @@ public function joinCluster(string[] nodeIPs) {
                     log:printInfo("No " + node + " is not the leader");
                     string[] leaderIP;
                     leaderIP[0] = result.leaderHint;
+                    if (leaderIP[0]==""){
+                        continue;
+                    }
                     joinCluster(leaderIP);
                     return;
                 }
@@ -244,7 +250,7 @@ public type Cache object {
                 }
             }
             error err => {
-                log:printError("error zaxs", err = err);
+                log:printError("Put request failed", err = err);
             }
         }
         //TODO Not enoguh nodes for replica
@@ -288,7 +294,7 @@ public type Cache object {
                     }
                 }
                 error err => {
-                    log:printError(err.message, err = err);
+                    log:printError("Put replica request failed", err = err);
                 }
             }
         }
@@ -348,7 +354,7 @@ public type Cache object {
                             }
                         }
                         error jserror => {
-                            log:printError(err.message, err = err);
+                            log:printError("GET replica failed.", err = err);
                         }
                     }
                 }
@@ -475,6 +481,7 @@ public function remove(string key) {
                 }
             }
             error err => {
+                //TODO Queue here
                 log:printError("error removing from node", err = err);
             }
         }
@@ -514,6 +521,7 @@ public function remove(string key) {
                     }
                 }
                 error err => {
+                    //TODO Add queue
                     log:printError(err.message, err = err);
                 }
             }
