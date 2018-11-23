@@ -7,36 +7,37 @@ map<CacheEntry> cacheEntries;
 
 //Returns single cache entry according to given key
 function getCacheEntry(string key) returns json {
-    CacheEntry default;
+    //CacheEntry default;
     //CacheEntry obj = cacheEntries[key] ?: default;
-    json payload;
     CacheEntry? cacheEntry = cacheEntries[key];
     match cacheEntry {
         CacheEntry entry => {
             entry.lastAccessedTime = time:currentTime().time;
-            payload = check <json>entry;
+            return check <json>entry;
         }
         () => {
-            payload = check <json>default;
+            json j = {value:null};
+            return j;
         }
     }
     //json payload = check <json>obj;
-    return payload;
+    //return payload;
 }
 
 //Adds a single cache entry to the store
 function setCacheEntry(json jsObj) returns json {
+    CacheEntry entry = check <CacheEntry> jsObj;
     if (cacheCapacity <= lengthof cacheEntries) {
         evictEntries();
     }
-    boolean isReplica = check <boolean>jsObj["replica"];
-    string key;
+    string key = entry.cacheName+"."+entry.key;
     //jsObj.remove(key);
-    if (isReplica) {
-        key = "R:" + jsObj["key"].toString();
+    if (entry.replica) {
+        key = "R:" + key;
     } else {
-        key = "O:" + jsObj["key"].toString();
+        key = "O:" + key;
     }
+
     cacheEntries[key] = check <CacheEntry>jsObj;
     return jsObj;
 }

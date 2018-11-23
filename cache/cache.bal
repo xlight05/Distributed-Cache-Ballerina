@@ -31,8 +31,10 @@ type Node record {
 # + lastAccessedTime - last accessed time in ms of this value which is used to remove LRU cached values
 # + createdTime - records the created time of the entry 
 # + replica - checks if a record is a replica
+# + cacheName - Cache
 
 type CacheEntry record {
+    string cacheName;
     any value;
     string key;
     int lastAccessedTime;
@@ -174,14 +176,13 @@ type CacheConfig record {
 # Represents a cache.
 public type Cache object {
     string name;
-    //TODO local cache per node or cache?
+    //TODO local cache per node or cache?   add time based eviction for the cache
     LocalCache nearCache = new(capacity = config:getAsInt("local.cache.capacity", default = 100), evictionFactor =
         config:getAsFloat("local.cache.evictionFactor", default = 0.25)); //maybe move from the object?
-    //CacheConfig config;
+    int expiryTimeMillis;
 
-    public new(name) {
+    public new(name,expiryTimeMillis = 60000) {
         initNodeConfig(); // not the best choice -,- should init before this
-
         var cc = cacheMap[name];
         match cc {
             Cache cache => {
@@ -191,7 +192,6 @@ public type Cache object {
             }
             () => {
                 var cacheVar = getCache(name);
-
                 match cacheVar {
                     Cache cache => {
                         self = cache;
@@ -207,7 +207,6 @@ public type Cache object {
         }
     }
 
-
     # Adds the given key, value pair to the provided cache.It will be stored in a appropirate node in the cluster
     #
     # + key - value which should be used as the key
@@ -220,45 +219,38 @@ public type Cache object {
         }
         string nodeIP = hashRing.get(key);
         int currentTime = time:currentTime().time;
-        CacheEntry entry = { value: value, key: key, lastAccessedTime: currentTime, createdTime: currentTime };
+        CacheEntry entry = { value: value, key: key, lastAccessedTime: currentTime, createdTime: currentTime, cacheName:name};
         json entryJSON = check <json>entry;
-        entryJSON["key"] = key;
-        entryJSON["replica"] = false;
-
-        //http:ClientEndpointConfig config = { url: nodeIP };
-        //nodeEndpoint.init(config);
-
+        entryJSON["key"] = key; //remove
+        entryJSON["replica"] = false; //remve
         http:Client? clientNode = clientMap[nodeIP];
-        http:Client client;
         match clientNode {
-            http:Client c => {
-                client = c;
+            http:Client client => {
+                nodeEndpoint = client;
+                var res = nodeEndpoint->post("/data/store/", entryJSON);
+                match res {
+                    http:Response resp => {
+                        var msg = resp.getJsonPayload();
+                        match msg {
+                            json jsonPayload => {
+                                log:printInfo("'" + jsonPayload["key"].toString() + "' added");
+                            }
+                            error err => {
+                                log:printError("error json convert", err = err);
+                            }
+                        }
+                    }
+                    error err => {
+                        log:printError("Put request failed", err = err);
+                    }
+                }
+                //TODO Not enoguh nodes for replica
+                _ = start putEntriesInToReplicas(entryJSON,key,nodeIP);
             }
             () => {
                 log:printError("Client not found");
             }
         }
-        nodeEndpoint = client;
-        var res = nodeEndpoint->post("/data/store/", entryJSON);
-        match res {
-            http:Response resp => {
-                var msg = resp.getJsonPayload();
-                match msg {
-                    json jsonPayload => {
-                        //log:printInfo("'" + jsonPayload["key"].toString() + "' added");
-                    }
-                    error err => {
-                        log:printError("error json convert", err = err);
-                    }
-                }
-            }
-            error err => {
-                log:printError("Put request failed", err = err);
-            }
-        }
-        //TODO Not enoguh nodes for replica
-        _ = start putEntriesInToReplicas(entryJSON,key,nodeIP);
-
     }
     function putEntriesInToReplicas(json entryJSON,string key,string originalTarget) {
         entryJSON["replica"] = true;
@@ -267,40 +259,33 @@ public type Cache object {
             if (node == originalTarget) {
                 continue;
             }
-            //http:ClientEndpointConfig cfg = { url: node };
-            //nodeEndpoint.init(cfg);
-
-
             http:Client? replicaNode = clientMap[node];
-            http:Client replica;
             match replicaNode {
-                http:Client c => {
-                    replica = c;
+                http:Client replica => {
+                    nodeEndpoint = replica;
+                    var resz = nodeEndpoint->post("/data/store/", entryJSON);
+                    match resz {
+                        http:Response resp => {
+                            var msg = resp.getJsonPayload();
+                            match msg {
+                                json jsonPayload => {
+                                    //log:printInfo("'" + jsonPayload["key"].toString() + "' replica added to node " + node);
+                                }
+                                error err => {
+                                    log:printError(err.message, err = err);
+                                }
+                            }
+                        }
+                        error err => {
+                            log:printError("Put replica request failed", err = err);
+                        }
+                    }
                 }
                 () => {
                     log:printError("Client not found");
                 }
             }
-            nodeEndpoint = replica;
-            var resz = nodeEndpoint->post("/data/store/", entryJSON);
-            match resz {
-                http:Response resp => {
-                    var msg = resp.getJsonPayload();
-                    match msg {
-                        json jsonPayload => {
-                            //log:printInfo("'" + jsonPayload["key"].toString() + "' replica added to node " + node);
-                        }
-                        error err => {
-                            log:printError(err.message, err = err);
-                        }
-                    }
-                }
-                error err => {
-                    log:printError("Put replica request failed", err = err);
-                }
-            }
         }
-
 }
 
 
@@ -317,7 +302,7 @@ public type Cache object {
             }
         }
         string nodeIP = hashRing.get(key);
-        string originalKey = "O:"+key;
+        string originalKey = "O:"+name+"."+key;
         var msg = getEntryFromServer(nodeIP, originalKey);
         match msg {
             json jsonPayload => {
@@ -337,7 +322,7 @@ public type Cache object {
             error err => {
                 log:printError(err.message, err = err);
                 string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
-                string replicaKey = "R:"+key;
+                string replicaKey = "R:"+name+"."+key;
                 future <json|error> [] replicaNodeFutures;
                 foreach node in replicaNodes {
                     if (node == nodeIP) {
