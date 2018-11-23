@@ -9,6 +9,7 @@ import ballerina/config;
 //TODO Better service discovery
 //TODO Improve retry mechanisms of put,get,remove
 //TODO Set smaller timeouts with retries for put get remove.
+//TODO Choose a better hashing algo. less collutions, high speed 
 endpoint http:Client nodeEndpoint {
     url: "http://localhost:" + config:getAsString("cache.port", default = "7000")
 };
@@ -63,6 +64,7 @@ public function initNodeConfig() {
     } else {
         joinCluster(configNodeList);
     }
+
 }
 
 #Allows uesrs to create the cluster
@@ -179,6 +181,7 @@ public type Cache object {
 
     public new(name) {
         initNodeConfig(); // not the best choice -,- should init before this
+
         var cc = cacheMap[name];
         match cc {
             Cache cache => {
@@ -242,7 +245,7 @@ public type Cache object {
                 var msg = resp.getJsonPayload();
                 match msg {
                     json jsonPayload => {
-                        log:printInfo("'" + jsonPayload["key"].toString() + "' added");
+                        //log:printInfo("'" + jsonPayload["key"].toString() + "' added");
                     }
                     error err => {
                         log:printError("error json convert", err = err);
@@ -264,7 +267,6 @@ public type Cache object {
             if (node == originalTarget) {
                 continue;
             }
-            io:println("Replica : " + node);
             //http:ClientEndpointConfig cfg = { url: node };
             //nodeEndpoint.init(cfg);
 
@@ -286,7 +288,7 @@ public type Cache object {
                     var msg = resp.getJsonPayload();
                     match msg {
                         json jsonPayload => {
-                            log:printInfo("'" + jsonPayload["key"].toString() + "' replica added to node " + node);
+                            //log:printInfo("'" + jsonPayload["key"].toString() + "' replica added to node " + node);
                         }
                         error err => {
                             log:printError(err.message, err = err);
@@ -302,7 +304,7 @@ public type Cache object {
 }
 
 
-    #Returns the cached value associated with the given key. If the provided cache key is not found in the cluster, () will be returned.
+#Returns the cached value associated with the given key. If the provided cache key is not found in the cluster, () will be returned.
 #
 # + key - key which is used to retrieve the cached value
 # + return  -The cached value associated with the given key
@@ -321,11 +323,14 @@ public type Cache object {
             json jsonPayload => {
                 if (jsonPayload.value != null) {
                     CacheEntry entry = check <CacheEntry>jsonPayload;
-                    log:printInfo("Entry found '" + key + "'");
+                    //log:printInfo("Entry found '" + key + "'");
                     return entry.value;
                 }
                 else {
-                    log:printWarn("Entry not found '" + key + "'");
+                    // log:printWarn (jsonPayload.toString());
+                     log:printWarn("Entry not found '" + key + "'");
+                      locateNode(originalKey);
+                     //                       runtime:sleep (90000);
                     return ();
                 }
             }
@@ -346,7 +351,7 @@ public type Cache object {
                         json resp => {
                             if (resp.value != null) {
                                 CacheEntry entry = check <CacheEntry>resp;
-                                log:printInfo("Entry found in replica '" + key + "'");
+                                //log:printInfo("Entry found in replica '" + key + "'");
                                 return entry.value;
                             }
                             else {
@@ -361,6 +366,7 @@ public type Cache object {
 
             }
         }
+        log:printWarn("Entry not found '" + key + "'");
         return ();
     }
 
@@ -399,6 +405,7 @@ public type Cache object {
                 }
             }
             error err => {
+                log:printError(err.message, err = err);
                 return err;
             }
         }

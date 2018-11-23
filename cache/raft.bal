@@ -21,7 +21,7 @@ endpoint http:Client blockingEp {
     url: "http://localhost:3000"
 };
 
-map<http:Client> clientMap;
+public map<http:Client> clientMap;
 
 int MIN_ELECTION_TIMEOUT = config:getAsInt("raft.min.election.timeout", default = 2000);
 int MAX_ELECTION_TIMEOUT = config:getAsInt("raft.max.election.timeout", default = 2500);
@@ -403,6 +403,16 @@ function checkSuspectedNode(SuspectNode node) {
         error err => {
             //if healthy node didnt respond //could be  be coz of packet loss
             log:printError("Healthy Node didn't respond: " + err.message + "\n");
+            //this codeblock should be removed after increasing timeouts. for now since both timeouts in current n healthy nodes r same failed request will timeout
+            //
+            node.suspectRate = node.suspectRate + SUSPECT_VALUE;
+            if (node.suspectRate >= 100) {
+                //commit dead
+                boolean commited = clientRequest("NR " + node.client.config.url);
+                log:printInfo(node.client.config.url + " Removed from the cluster");
+                return;
+            }
+            //
             runtime:sleep(FAILURE_TIMEOUT_MILS);
             checkSuspectedNode(node);
         }
@@ -581,7 +591,7 @@ function apply(string command) {
             timeoutMillis: MIN_ELECTION_TIMEOUT / 3,
             retryConfig: {
                 interval: HEARTBEAT_TIMEOUT / 3,
-                count: 1,
+                count: 0,
                 backOffFactor: 1.0,
                 maxWaitInterval: HEARTBEAT_TIMEOUT / 3
             }

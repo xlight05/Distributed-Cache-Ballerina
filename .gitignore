@@ -4,3 +4,6 @@ Ballerina.toml
 Distributed-Cache-Ballerina.iml
 ballerina-internal.log
 target/
+.vscode/
+ballerina-internal.log.1
+ballerina-internal.log.2

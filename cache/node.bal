@@ -20,8 +20,9 @@ function setReplicationFactor() {
     replicationFact = 1;
 }
 
-function relocateData() {
-    lock{
+//TODO maintain counter in both sender and reciver to ensure request is recieved. or MB
+public function relocateData() {
+    //lock{
         json changedJson = getChangedEntries();
         foreach nodeItem in clientMap {
             string nodeIP = nodeItem.config.url;
@@ -50,7 +51,7 @@ function relocateData() {
                 }
             }
         }
-    }
+    //}
 }
 
 
