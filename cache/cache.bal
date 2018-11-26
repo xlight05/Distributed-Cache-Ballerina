@@ -29,17 +29,17 @@ type Node record {
 # + value - cache value
 # + key - key of the entry
 # + lastAccessedTime - last accessed time in ms of this value which is used to remove LRU cached values
-# + createdTime - records the created time of the entry 
 # + replica - checks if a record is a replica
 # + cacheName - Cache
+# + expiryTimeMillis - Max time limit of the entry
 
 type CacheEntry record {
     string cacheName;
     any value;
     string key;
     int lastAccessedTime;
-    int createdTime;
     boolean replica;
+    int expiryTimeMillis;
 };
 // Map which stores all of the caches.
 
@@ -81,10 +81,6 @@ public function createCluster() {
 #    + nodeIPs - ips of the nodes in the cluster
 
 public function joinCluster(string[] nodeIPs) {
-    //improve resiliancy
-    //when leader is not appointed
-    //when target is not leader ""
-    //fix recurse
     foreach node in nodeIPs {
         http:Client client;
         http:ClientEndpointConfig cfg = { url: node };
@@ -176,10 +172,11 @@ type CacheConfig record {
 # Represents a cache.
 public type Cache object {
     string name;
+    int expiryTimeMillis;
     //TODO local cache per node or cache?   add time based eviction for the cache
     LocalCache nearCache = new(capacity = config:getAsInt("local.cache.capacity", default = 100), evictionFactor =
         config:getAsFloat("local.cache.evictionFactor", default = 0.25)); //maybe move from the object?
-    int expiryTimeMillis;
+
 
     public new(name,expiryTimeMillis = 60000) {
         initNodeConfig(); // not the best choice -,- should init before this
@@ -219,10 +216,8 @@ public type Cache object {
         }
         string nodeIP = hashRing.get(key);
         int currentTime = time:currentTime().time;
-        CacheEntry entry = { value: value, key: key, lastAccessedTime: currentTime, createdTime: currentTime, cacheName:name};
+        CacheEntry entry = { value: value, key: key, lastAccessedTime: currentTime, createdTime: currentTime, cacheName:self.name, replica:false,expiryTimeMillis:self.expiryTimeMillis};
         json entryJSON = check <json>entry;
-        entryJSON["key"] = key; //remove
-        entryJSON["replica"] = false; //remve
         http:Client? clientNode = clientMap[nodeIP];
         match clientNode {
             http:Client client => {
@@ -302,7 +297,7 @@ public type Cache object {
             }
         }
         string nodeIP = hashRing.get(key);
-        string originalKey = "O:"+name+"."+key;
+        string originalKey = "O:"+name+":"+key;
         var msg = getEntryFromServer(nodeIP, originalKey);
         match msg {
             json jsonPayload => {
@@ -322,7 +317,7 @@ public type Cache object {
             error err => {
                 log:printError(err.message, err = err);
                 string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
-                string replicaKey = "R:"+name+"."+key;
+                string replicaKey = "R:"+name+":"+key;
                 future <json|error> [] replicaNodeFutures;
                 foreach node in replicaNodes {
                     if (node == nodeIP) {
@@ -477,50 +472,11 @@ public function remove(string key) {
                 log:printError("error removing from node", err = err);
             }
         }
-        //TODO Not enoguh nodes for replica
-        string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
-        foreach node in replicaNodes {
-            if (node == nodeIP) {
-                continue;
-            }
-            io:println("Replica : " + node);
-            //http:ClientEndpointConfig cfg = { url: node };
-            //nodeEndpoint.init(cfg);
-
-
-            http:Client? replicaNode = clientMap[node];
-            http:Client replica;
-            match replicaNode {
-                http:Client c => {
-                    replica = c;
-                }
-                () => {
-                    log:printError("Client not found");
-                }
-            }
-            nodeEndpoint = replica;
-            var resz = nodeEndpoint->delete("/data/store/", entryJSON);
-            match resz {
-                http:Response resp => {
-                    var msg = resp.getJsonPayload();
-                    match msg {
-                        json jsonPayload => {
-                            log:printInfo("Cache entry replica remove " + jsonPayload["status"].toString());
-                        }
-                        error err => {
-                            log:printError(err.message, err = err);
-                        }
-                    }
-                }
-                error err => {
-                    //TODO Add queue
-                    log:printError(err.message, err = err);
-                }
-            }
-        }
+    _ = start removeReplicas (key,nodeIP);
     }
 
 };
+
 
 
 

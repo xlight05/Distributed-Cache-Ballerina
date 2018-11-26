@@ -16,7 +16,7 @@ public function main(string... args) {
     oauthCache.put("1", "1");
     oauthCache.put("2", "2");
     oauthCache.put("3", "3");
-    //io:println(<string>oauthCache.get("1"));
+    io:println(<string>oauthCache.get("1"));
     oauthCache.put("4", "4");
     oauthCache.put("5", "5");
     oauthCache.put("6", "6");
@@ -31,9 +31,11 @@ public function main(string... args) {
     //oauthCache.remove ("1");
     io:println(<string>oauthCache.get("1"));
     io:println(<string>oauthCache.get("2"));
+    io:println(<string>oauthCache.get("3"));
+    io:println(<string>oauthCache.get("4"));
 
 
-    io:println(<string>oauthCache.get("Name"));
+    //io:println(<string>oauthCache.get("Name"));
     runtime:sleep(100000000);
 }
 
