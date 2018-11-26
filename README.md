@@ -1,6 +1,6 @@
 # Distributed-Cache-Ballerina
 
-### Planned Features
+### Features
 
 - Core Distributed in memory storage using consistant hashing
 - Node Add/Remove in runtime with data realocation
@@ -13,10 +13,8 @@
 ### Todos
 
 - Refactor code,Documentation
-- Merge clientMap in node.bal with raft.
-- Node add / remove function
 - Performance analysis
-
+- Healthcheck feature
 
 ### Get started
 

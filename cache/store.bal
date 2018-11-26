@@ -285,6 +285,7 @@ function createCacheCleanupTask() returns task:Timer {
     cleanerTimer.start();
     return cleanerTimer;
 }
+
 function removeReplicas(string key, string originalNode) {
     string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
     foreach node in replicaNodes {

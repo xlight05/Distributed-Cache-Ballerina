@@ -9,7 +9,7 @@ public function main(string... args) {
 
     //cache:createCluster();
     //_ = cache:initNodeConfig();
-    cache:Cache oauthCache = new("oauthCache");
+    cache:Cache oauthCache = new("oauthCache",expiryTimeMillis=30000);
 
     //oauthCache.put("Name", "Ballerina");
 
