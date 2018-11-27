@@ -7,7 +7,6 @@ import ballerina/config;
 
 @http:ServiceConfig { basePath: "/" }
 service<http:Service> api bind listener {
-
     //Allows you to list the nodes from the cluster
     @http:ResourceConfig {
         methods: ["GET"],
@@ -21,10 +20,6 @@ service<http:Service> api bind listener {
                                                   "Error sending response", err = e) };
     }
 
-
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
     //Allows users to retrive data from a given key
     @http:ResourceConfig {
         methods: ["GET"],
@@ -37,7 +32,6 @@ service<http:Service> api bind listener {
         caller->respond(res) but { error e => log:printError(
                                                   "Error sending response", err = e) };
     }
-
 
     //Allows users to store data in the node.
     @http:ResourceConfig {
@@ -203,10 +197,3 @@ service<http:Service> api bind listener {
                                                   "Error sending response", err = e) };
     }
 }
-
-//
-//function initCache() returns boolean {
-//    io:println("In init cache");
-//    true -> cacheReady;
-//    return true;
-//}

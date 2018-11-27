@@ -7,17 +7,11 @@ import ballerina/log;
 import ballerina/config;
 import ballerina/http;
 
-
 //TODO LOCKS
 //TODO LAG Test
 //TODO Partition Test
 
-
-//endpoint raftBlockingClient blockingEp {
-//    url: "http://localhost:3000"
-//};
-
-endpoint http:Client blockingEp {
+endpoint http:Client raftEndpoint {
     url: "http://localhost:3000"
 };
 
@@ -54,36 +48,23 @@ int SUSPECT_VALUE = config:getAsInt("failure.detector.suspect.value", default = 
 int FAILURE_TIMEOUT_MILS = config:getAsInt("failure.detector.timeout.millis", default = 1000);
 map<SuspectNode> suspectNodes;
 
-
 public function startRaft() {
-    //cheat for first node lol
+    //add current node in to log
     log[lengthof log] = { term: 1, command: "NA " + currentNode };
     apply("NA " + currentNode);
     commitIndex = commitIndex + 1;
     lastApplied = lastApplied + 1;
-    //raftBlockingClient client;
-    //grpc:ClientEndpointConfig cc = { url: currentNode };
-    //client.init(cc);
-    //clientMap[currentNode] = client;
     nextIndex[currentNode] = 1;
     matchIndex[currentNode] = 0;
-
-
-    int interval = math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT);
-
-    (function () returns error?) onTriggerFunction = electLeader;
-
+    int interval = math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT); //random election timeouts to prevent split vote
+    (function () returns error?) onTriggerFunction = electLeader; //election timer trigger
     function (error) onErrorFunction = timerError;
-
     timer = new task:Timer(onTriggerFunction, onErrorFunction,
         interval);
     timer.start();
-    //io:println("After starting cluster");
-    //printStats();
+
     boolean ready;
-    ready <- raftReadyChan;
-    //boolean isCacheReady;
-    //isCacheReady <- cacheReady;
+    ready <- raftReadyChan; //signals raft is ready
 }
 
 //function printStats() {
@@ -111,28 +92,18 @@ public function startRaft() {
 public function joinRaft() {
     nextIndex[currentNode] = 1;
     matchIndex[currentNode] = 0;
-
-
-    int interval = math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT);
-
+    int interval = math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT); //random election timeouts to prevent split vote
     (function () returns error?) onTriggerFunction = electLeader;
-
     function (error) onErrorFunction = timerError;
-
     timer = new task:Timer(onTriggerFunction, onErrorFunction,
         interval, delay = interval);
     timer.start();
-    //io:println("After joining cluster");
-    //printStats();
     boolean ready;
-    ready <- raftReadyChan;
-    //boolean isCacheReady;
-    //isCacheReady <- cacheReady;
+    ready <- raftReadyChan; //signals raft is ready
 }
 
 function electLeader() {
-
-    //addNodes();//temp
+    //if not leader return
     if (state == "Leader") {
         //timer.stop();
         return;
@@ -144,12 +115,11 @@ function electLeader() {
     state = "Candidate";
     VoteRequest req = { term: currentTerm, candidateID: currentNode, lastLogIndex: (lengthof log) - 1, lastLogTerm: log[(
         lengthof log) - 1].term };
-    //io:print("Sending vote Request :");
-    //io:println(req);
     future<int> voteResp = start sendVoteRequests(untaint req);
     int voteCount = await voteResp;
-    //check if another appendEntry came
+    //check if another appendEntry came while waitting for vote responses
     if (currentTerm != electionTerm) {
+        log:printInfo ("Term changed while waitting for vote responses. Returning");
         return;
     }
     int quoram = <int>math:ceil(lengthof clientMap / 2.0);
@@ -173,9 +143,7 @@ function electLeader() {
     }
     resetElectionTimer();
     log:printInfo(currentNode + " is a " + state);
-    true -> raftReadyChan;
-    //io:println("After electing Leader");
-    //printStats();
+    true -> raftReadyChan; // signal raft is ready
     return ();
 }
 
@@ -187,62 +155,45 @@ function sendVoteRequests(VoteRequest req) returns int {
             continue;
         }
         candVoteLog[node.config.url] = -1;
-        future asyncRes = start seperate(node, req);
+        //sends async vote requests
+        future asyncRes = start sendVoteRequestToSeperateNode(node, req);
         futureVotes[lengthof futureVotes] = asyncRes;
         //ignore current Node
     }
     foreach i in futureVotes { //change this in to quoram
+        //waits for vote requests
         _ = await i;
     }
     int count = 1;
     foreach item in candVoteLog {
         if (item == 1) {
+            //increment votes
             count = count + 1;
         }
         if (item == -2) {
+            //a node has higher term, stepdown
             candVoteLog.clear();
             return 0;
         }
     }
     candVoteLog.clear();
-    //int count;
-    ////busy while :/ fix using future map
-    //while (true) {
-    //    runtime:
-    //    sleep(50);
-    //    count = 0;
-    //    foreach item in candVoteLog {
-    //        if (item == 1) {
-    //            count++;
-    //        }
-    //    }
-    //    if (count > math:floor(<int>lengthof clientMap / 2.0)) {
-    //        break;
-    //    } else {
-    //        //wait a bit
-    //        runtime:sleep(100);
-    //        //change // 150/2
-    //        //check again
-    //        break;
-    //    }
-    //}
-
     return count;
 }
 
-function seperate(http:Client node, VoteRequest req) {
-    blockingEp = node;
-
-    var unionResp = blockingEp->post("/raft/vote", check <json>req);
+function sendVoteRequestToSeperateNode(http:Client node, VoteRequest req) {
+    raftEndpoint = node;
+    var unionResp = raftEndpoint->post("/raft/vote", check <json>req);
     match unionResp {
         http:Response payload => {
             VoteResponse result = check <VoteResponse>check payload.getJsonPayload();
             if (result.term > currentTerm) {
-                candVoteLog[node.config.url] = -2;
+                //target node has higher term. stop election
+                candVoteLog[node.config.url] = -2; // to signal
                 return;
                 //stepdown
             }
             if (result.granted) {
+                //if vote granted
                 candVoteLog[node.config.url] = 1;
             }
             else {
@@ -258,6 +209,7 @@ function seperate(http:Client node, VoteRequest req) {
 }
 
 function sendHeartbeats() {
+    //return if node is not leader
     if (state != "Leader") {
         return;
     }
@@ -266,15 +218,16 @@ function sendHeartbeats() {
         if (node.config.url == currentNode) {
             continue;
         }
+        //sends heartbeats async
         future asy = start heartbeatChannel(node);
         heartbeatAsync[lengthof heartbeatAsync] = asy;
     }
     foreach item in heartbeatAsync {
+        //wait for heartbeat responses
         var x = await item;
     }
+    //start committing entries
     commitEntry();
-    //io:println("After sending all heartbeats");
-    //io:println(printStats());
 }
 
 function heartbeatChannel(http:Client node) {
@@ -282,13 +235,12 @@ function heartbeatChannel(http:Client node) {
         return;
     }
     string peer = node.config.url;
-    int nextIndexOfPeer = nextIndex[peer] ?: 0;
-    int prevLogIndex = nextIndexOfPeer - 1;
+    int nextIndexOfPeer = nextIndex[peer] ?: 0; //Next index to be sent to the peer
+    int prevLogIndex = nextIndexOfPeer - 1; //
     int prevLogTerm = 0;
     if (prevLogIndex > 0) {
         prevLogTerm = log[prevLogIndex].term;
     }
-    //        int lastEntry = min(lengthof log,nextIndexOfPeer);
     LogEntry[] entryList;
     foreach i in prevLogIndex...lengthof log - 1 {
         entryList[lengthof entryList] = log[i];
@@ -301,10 +253,8 @@ function heartbeatChannel(http:Client node) {
         entries: entryList,
         leaderCommit: commitIndex
     };
-    //io:println(appendEntry);
-    //io:println("To " + node.config.url);
-    blockingEp = node;
-    var heartbeatResp = blockingEp->post("/raft/append", check <json>untaint appendEntry);
+    raftEndpoint = node;
+    var heartbeatResp = raftEndpoint->post("/raft/append", check <json>untaint appendEntry);
     match heartbeatResp {
         http:Response payload => {
             AppendEntriesResponse result = check <AppendEntriesResponse>check payload.getJsonPayload();
@@ -356,11 +306,11 @@ function checkSuspectedNode(SuspectNode node) {
     }
     http:Client client = getHealthyNode();
     io:println("Healthy Node :" + client.config.url);
-    blockingEp = client;
+    raftEndpoint = client;
     json req = { ip: node.client.config.url };
     //change
     //increase timeout
-    var resp = blockingEp->post("/raft/indirect/", req);
+    var resp = raftEndpoint->post("/raft/indirect/", req);
     match resp {
         http:Response payload => {
             json|error result = payload.getJsonPayload();

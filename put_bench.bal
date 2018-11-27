@@ -18,7 +18,7 @@ public function main(string... args) {
 
     float nanosecondsPerOneEntry = runTest(1000000);
     float requestsPerSecond = (1.0/nanosecondsPerOneEntry)*1000000000;
-    writeToJson(1000000, requestsPerSecond, localCacheEnabled,capacity,evictionFact,partitions,replicationFact,iteration,nodes);
+    //writeToJson(1000000, requestsPerSecond, localCacheEnabled,capacity,evictionFact,partitions,replicationFact,iteration,nodes);
 }
 
 

@@ -4,54 +4,54 @@ import ballerina/config;
 import ballerina/log;
 import ballerina/http;
 
-//endpoint grpc:Listener listener {
-//    host: "localhost",
-//    port: config:getAsInt("port", default = 7000)
-//};listener listner
 endpoint http:Listener listener {
     port: config:getAsInt("raft.port", default = 7000)
 };
-//map<boolean> voteLog;
-//boolean initVoteLog = voteLogInit();
 
-// public type VoteRequest record{
-//     int term;
-//     string candidateID;
-//     int lastLogIndex;
-//     int lastLogTerm;
-// };
 
-// public type VoteResponse record{
-//     boolean granted;
-//     int term;
-// };
+type VoteRequest record {
+    int term;
+    string candidateID;
+    int lastLogIndex;
+    int lastLogTerm;
 
-// public type AppendEntries record {
-//     int term;
-//     string leaderID;
-//     int prevLogIndex;
-//     int prevLogTerm;
-//     LogEntry[] entries;
-//     int leaderCommit;
-// };
+};
 
-// public type AppendEntriesResponse record {
-//     int term;
-//     boolean sucess;
-//     int followerMatchIndex;
+type VoteResponse record {
+    boolean granted;
+    int term;
 
-// };
-//  public type LogEntry record {
-//      int term;
-//      string command;
-//  };
-//  type ConfigChangeResponse record{
-//     boolean sucess;
-//     string leaderHint;
-// };
-//
-//AppendEntries(term, leaderID, prevLogIndex, prevLogTerm, entries[], leaderCommit)
-//-> (term, conflictIndex, conflictTerm, success)
+};
+
+type AppendEntries record {
+    int term;
+    string leaderID;
+    int prevLogIndex;
+    int prevLogTerm;
+    LogEntry[] entries;
+    int leaderCommit;
+
+};
+
+type LogEntry record {
+    int term;
+    string command;
+
+};
+
+type AppendEntriesResponse record {
+    int term;
+    boolean sucess;
+    int followerMatchIndex;
+
+};
+
+type ConfigChangeResponse record {
+    boolean sucess;
+    string leaderHint;
+
+};
+
 @http:ServiceConfig { basePath: "/raft" }
 service<http:Service> raft bind listener {
     //boolean initRaftVar = initRaft();
@@ -81,14 +81,9 @@ service<http:Service> raft bind listener {
         path: "/append"
     }
     appendEntriesRPC(endpoint client, http:Request request) {
-        //io:println("Before respondin to append RPC");
-        //io:println(printStats());
         json jsonPayload = check request.getJsonPayload();
         AppendEntries appendEntry = check <AppendEntries>jsonPayload;
         AppendEntriesResponse res = heartbeatHandle(appendEntry);
-        //io:println("After respondin to append RPC");
-        //io:println(printStats());
-        //io:println(res);
         http:Response response;
         response.setJsonPayload(untaint check <json>res);
 
@@ -104,7 +99,6 @@ service<http:Service> raft bind listener {
     }
     addServerRPC(endpoint client, http:Request request) {
         string ip = check request.getTextPayload();
-        //io:println(ip);
         ConfigChangeResponse res = addNode(ip);
         http:Response response;
         response.setJsonPayload(check <json>res);
@@ -139,12 +133,12 @@ service<http:Service> raft bind listener {
         string targetIP = check <string>reqq.ip;
         foreach i in clientMap {
             if (i.config.url == targetIP) {
-                blockingEp = i;
+                raftEndpoint = i;
                 break;
             }
         }
         //TODO High timeout coz data relocation might be affected
-        var resp = blockingEp->get("/raft/failCheck/");
+        var resp = raftEndpoint->get("/raft/failCheck/");
         json j1;
         match resp {
             http:Response payload => {
@@ -161,7 +155,7 @@ service<http:Service> raft bind listener {
                 j1 = { "status": false, "relocate": false };
             }
         }
-        log:printInfo("Indirect ping for " + blockingEp.config.url + " Server Status : " + j1["status"].toString());
+        log:printInfo("Indirect ping for " + raftEndpoint.config.url + " Server Status : " + j1["status"].toString());
         http:Response response;
         response.setJsonPayload(j1);
 
@@ -244,15 +238,6 @@ function heartbeatHandle(AppendEntries appendEntry) returns AppendEntriesRespons
     return res;
 }
 
-
-
-//function voteLogInit() returns boolean {
-//    foreach node in nodeList {
-//        voteLog[node] = false;
-//    }
-//    return true;
-//}
-
 function voteResponseHandle(VoteRequest voteReq) returns boolean {
     boolean granted;
     int term = voteReq.term;
@@ -296,12 +281,7 @@ function voteResponseHandle(VoteRequest voteReq) returns boolean {
 
     resetElectionTimer();
     votedFor = untaint voteReq.candidateID;
-
     return true;
-
-    //
-    //VoteRequest m = voteReq;
-    //if (currentTerm == m.term && votedFor in [None, peer] &&(m.lastLogTerm > logTerm(len(log)) ||(m.lastLogTerm == logTerm(len(log)) &&m.lastLogIndex >= len(log)))):
 }
 
 function getTerm(int index) returns int {

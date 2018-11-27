@@ -16,18 +16,18 @@ task:Timer cacheCleanupTimer = createCacheCleanupTask();
 
 //Returns single cache entry according to given key
 function getCacheEntry(string key) returns json {
-    //CacheEntry default;
-    //CacheEntry obj = cacheEntries[key] ?: default;
     CacheEntry? cacheEntry = cacheEntries[key];
     match cacheEntry {
         CacheEntry entry => {
             int currentSystemTime = time:currentTime().time;
+            //checks if entry is expired
             if (currentSystemTime >= entry.lastAccessedTime + entry.expiryTimeMillis) {
                 // If it is expired, remove the cache and return nil.
                 _ = cacheEntries.remove(key);
                 _ = start removeReplicas(key, currentNode);
                 return { value: null };
             }
+            //updates last accessed time
             entry.lastAccessedTime = time:currentTime().time;
             return check <json>entry;
         }
@@ -36,26 +36,25 @@ function getCacheEntry(string key) returns json {
             return j;
         }
     }
-    //json payload = check <json>obj;
-    //return payload;
 }
 
 //Adds a single cache entry to the store
-function setCacheEntry(json jsObj) returns json {
-    CacheEntry entry = check <CacheEntry>jsObj;
+function setCacheEntry(json entryJson) returns json {
+    CacheEntry entry = check <CacheEntry>entryJson;
+    //checks if node size is exceeded
     if (cacheCapacity <= lengthof cacheEntries) {
         evictEntries();
     }
     string key = entry.cacheName + ":" + entry.key;
-    //jsObj.remove(key);
+    //checks for replica
     if (entry.replica) {
         key = "R:" + key;
     } else {
         key = "O:" + key;
     }
 
-    cacheEntries[key] = check <CacheEntry>jsObj;
-    return jsObj;
+    cacheEntries[key] = check <CacheEntry>entryJson;
+    return entryJson;
 }
 
 //Returns all the cache entries avaialbe in the node
@@ -67,10 +66,9 @@ function getAllEntries() returns json {
 //Returns all the changed entries of the node catagorized according to node IP.
 function getChangedEntries() returns json {
     json entries;
-    string currentNodeIP = currentNode;
-    //Node catagorize
+    //Init json according to nodes
     foreach node in clientMap {
-        if (node.config.url != currentNodeIP) {
+        if (node.config.url != currentNode) {
             entries[node.config.url] = [];
         }
     }
@@ -79,10 +77,9 @@ function getChangedEntries() returns json {
         if (value.replica) {
             string[] replicaNodes = hashRing.GetClosestN(value.key, replicationFact);
             boolean remove = true;
-            foreach item in replicaNodes {
-                if (item != currentNodeIP) {
-                    //value["key"] = key;
-                    entries[item][lengthof entries[item]] = check <json>value;
+            foreach replicaNode in replicaNodes {
+                if (replicaNode != currentNode) {
+                    entries[replicaNode][lengthof entries[replicaNode]] = check <json>value;
                 }
                 else {
                     remove = false;
@@ -95,7 +92,7 @@ function getChangedEntries() returns json {
         } else {
             string correctNodeIP = hashRing.get(value.key);
             //Checks if the node is changed
-            if (correctNodeIP != currentNodeIP) {
+            if (correctNodeIP != currentNode) {
                 //value["key"] = key;
                 entries[correctNodeIP][lengthof entries[correctNodeIP]] = check <json>value;
                 _ = cacheEntries.remove(key); //Assuming the response was recieved :/
@@ -134,25 +131,8 @@ function evictEntries() {
     // Create new arrays to hold keys to be removed and hold the corresponding timestamps.
     string[] cacheKeysToBeRemoved = [];
     int[] timestamps = [];
-    //string[] keys = cacheEntries.keys();
     // Iterate through the keys.
     isRelocationOrEvictionRunning = true;
-    //foreach key in keys {
-    //    CacheEntry? cacheEntry = cacheEntries[key];
-    //    match cacheEntry {
-    //        CacheEntry entry => {
-    //            if (entry.replica){
-    //                continue;
-    //            }
-    //            // Check and add the key to the cacheKeysToBeRemoved if it matches the conditions.
-    //            checkAndAddEntries(keyCountToEvict, cacheKeysToBeRemoved, timestamps, key, entry.lastAccessedTime);
-    //        }
-    //        () => {
-    //            // If the key is not found in the map, that means that the corresponding cache is already removed
-    //            // (possibly by a another worker).
-    //        }
-    //    }
-    //}
     foreach key, value in cacheEntries {
         if (value.replica) {
             continue;
@@ -160,10 +140,7 @@ function evictEntries() {
         // Check and add the key to the cacheKeysToBeRemoved if it matches the conditions.
         checkAndAddEntries(keyCountToEvict, cacheKeysToBeRemoved, timestamps, key, value.lastAccessedTime);
     }
-
     // Return the array.
-    //io:println(cacheKeysToBeRemoved);
-
     json entries;
     //Node catagorize
     foreach node in clientMap{
@@ -175,12 +152,8 @@ function evictEntries() {
         string plainKey = c.split(":")[2];
         // These cache values are ignred. So it is not needed to check the return value for the remove function.
         string[] replicaNodes = hashRing.GetClosestN(plainKey, replicationFact);
-        // CacheEntry default;
-        // CacheEntry obj = cacheEntries[c] ?: default;
         foreach node in replicaNodes {
             if (node != currentNode) {
-                //value["key"] = key;
-                //json test = {key:c};
                 entries[node][lengthof entries[node]] = "R:" + c.split(":")[1];
             }
         }
@@ -195,6 +168,10 @@ function evictEntries() {
 function evictReplicas(json entries) {
     foreach nodeItem in clientMap {
         if (nodeItem.config.url == currentNode) { //Ignore if its the current node
+            continue;
+        }
+        if (lengthof entries[nodeItem.config.url]== 0){
+            //if not replicas evicted no need to send the request
             continue;
         }
         nodeEndpoint = nodeItem;
@@ -292,35 +269,32 @@ function removeReplicas(string key, string originalNode) {
         if (node == originalNode) {
             continue;
         }
-
         http:Client? replicaNode = clientMap[node];
-        http:Client replica;
         match replicaNode {
-            http:Client c => {
-                replica = c;
-            }
-            () => {
-                log:printError("Client not found");
-            }
-        }
-        nodeEndpoint = replica;
-        json entryJSON = { "key": key };
-        var resz = nodeEndpoint->delete("/data/store/", entryJSON);
-        match resz {
-            http:Response resp => {
-                var msg = resp.getJsonPayload();
-                match msg {
-                    json jsonPayload => {
-                        log:printInfo("Cache entry replica remove " + jsonPayload["status"].toString());
+            http:Client replica => {
+                nodeEndpoint = replica;
+                json entryJSON = { "key": key };
+                var response = nodeEndpoint->delete("/data/store/", entryJSON);
+                match response {
+                    http:Response resp => {
+                        var msg = resp.getJsonPayload();
+                        match msg {
+                            json jsonPayload => {
+                                log:printInfo("Cache entry replica remove " + jsonPayload["status"].toString());
+                            }
+                            error err => {
+                                log:printError(err.message, err = err);
+                            }
+                        }
                     }
                     error err => {
+                        //TODO Add queue
                         log:printError(err.message, err = err);
                     }
                 }
             }
-            error err => {
-                //TODO Add queue
-                log:printError(err.message, err = err);
+            () => {
+                log:printError("Client not found");
             }
         }
     }
