@@ -231,7 +231,6 @@ public type Cache object {
                         log:printError("Put request failed", err = err);
                     }
                 }
-                //TODO Not enoguh nodes for replica
                 _ = start putEntriesInToReplicas(entryJSON, key, originalEntryNode);
             }
             () => {
@@ -390,10 +389,6 @@ function putEntriesInToReplicas(json entryJSON, string key, string originalTarge
     //gets replica nodes
     string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
     foreach node in replicaNodes {
-        //TODO check this
-        if (node == originalTarget) {
-            continue;
-        }
         http:Client? replicaNode = cacheClientMap[node];
         match replicaNode {
             http:Client replica => {

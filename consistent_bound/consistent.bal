@@ -265,31 +265,3 @@ public type Consistent object {
 
 
 };
-
-// function main(string... args) {
-//     Consistent c = new();
-//     c.add("test");
-//     c.add("test2");
-//     c.add("test3");
-
-
-//     string x = c.locateKey("key1");
-//     io:println(x);
-//     io:println(c.locateKey("key2"));
-//     io:println(c.locateKey("key3"));
-//     io:println(c.locateKey("key4"));
-//     io:println(c.locateKey("key5"));
-
-
-//     //io:println(c.GetClosestN("key1",2));
-//     //io:println(c.removeNode("key1"));
-//     c.removeNode("test");
-
-//     io:println();
-
-//     io:println(c.locateKey("key1"));
-//     io:println(c.locateKey("key2"));
-//     io:println(c.locateKey("key3"));
-//     io:println(c.locateKey("key4"));
-//     io:println(c.locateKey("key5"));
-// }
