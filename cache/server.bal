@@ -14,13 +14,11 @@ type VoteRequest record {
     string candidateID;
     int lastLogIndex;
     int lastLogTerm;
-
 };
 
 type VoteResponse record {
     boolean granted;
     int term;
-
 };
 
 type AppendEntries record {
@@ -30,39 +28,31 @@ type AppendEntries record {
     int prevLogTerm;
     LogEntry[] entries;
     int leaderCommit;
-
 };
 
 type LogEntry record {
     int term;
     string command;
-
 };
 
 type AppendEntriesResponse record {
     int term;
     boolean sucess;
     int followerMatchIndex;
-
 };
 
 type ConfigChangeResponse record {
     boolean sucess;
     string leaderHint;
-
 };
 
 @http:ServiceConfig { basePath: "/raft" }
 service<http:Service> raft bind listener {
-    //boolean initRaftVar = initRaft();
-    //Internal
     @http:ResourceConfig {
         methods: ["POST"],
         path: "/vote"
     }
     voteResponseRPC(endpoint client, http:Request request) {
-        //io:println("Before responding to vote");
-        //printStats();
         json jsonPayload = check request.getJsonPayload();
         VoteRequest voteReq = check <VoteRequest>jsonPayload;
         log:printInfo("Vote request came from " + voteReq.candidateID);
@@ -131,7 +121,7 @@ service<http:Service> raft bind listener {
     indirectRPC(endpoint client, http:Request request) {
         json reqq = check request.getJsonPayload();
         string targetIP = check <string>reqq.ip;
-        foreach i in clientMap {
+        foreach i in raftClientMap {
             if (i.config.url == targetIP) {
                 raftEndpoint = i;
                 break;
@@ -185,8 +175,8 @@ service<http:Service> raft bind listener {
 }
 
 function heartbeatHandle(AppendEntries appendEntry) returns AppendEntriesResponse {
-    //initLog();
     AppendEntriesResponse res;
+    // step down before handling RPC if need be
     if (currentTerm < appendEntry.term) {
         //stepdown
         currentTerm = untaint appendEntry.term;
@@ -194,6 +184,7 @@ function heartbeatHandle(AppendEntries appendEntry) returns AppendEntriesRespons
         votedFor = "None";
 
     }
+    // outdated leader request
     if (currentTerm > appendEntry.term) {
         res = { term: currentTerm, sucess: false };
     } else {
@@ -202,10 +193,11 @@ function heartbeatHandle(AppendEntries appendEntry) returns AppendEntriesRespons
         state = "Follower";
         boolean sucess = appendEntry.prevLogTerm == 0 || (appendEntry.prevLogIndex < lengthof log && log[appendEntry.
                     prevLogIndex].term == appendEntry.prevLogTerm);
-        //can parse entries
         int index = 0;
+        //can parse entries in appendRPC
         if (sucess) {
             index = appendEntry.prevLogIndex;
+            //make the log same as leaders log
             foreach i in appendEntry.entries{
                 index = index + 1;
                 if (getTerm(index) != i.term) {
@@ -220,6 +212,7 @@ function heartbeatHandle(AppendEntries appendEntry) returns AppendEntriesRespons
         res = { term: currentTerm, sucess: sucess, followerMatchIndex: index };
 
     }
+    //commit entries for the follower
     if (commitIndex > lastApplied) {
         boolean isNodeChanged = false;
         foreach i in lastApplied + 1...commitIndex {
@@ -230,10 +223,12 @@ function heartbeatHandle(AppendEntries appendEntry) returns AppendEntriesRespons
             apply(log[i].command);
             lastApplied = i;
         }
+        //to avoid too much data relocation
         if (isNodeChanged) {
             relocateData();
         }
     }
+    //signal raft is ready.
     true -> raftReadyChan;
     return res;
 }
@@ -241,6 +236,7 @@ function heartbeatHandle(AppendEntries appendEntry) returns AppendEntriesRespons
 function voteResponseHandle(VoteRequest voteReq) returns boolean {
     boolean granted;
     int term = voteReq.term;
+    // step down before handling RPC if need be
     if (term > currentTerm) {
         currentTerm = untaint term;
         state = "Follower";
@@ -249,32 +245,25 @@ function voteResponseHandle(VoteRequest voteReq) returns boolean {
         //startElectionTimer();//maybe move this down
         //Leader variable init
     }
-
-    //if (term == currentTerm){
-    //    if (votedFor == voteReq.candidateID){
-    //        return true;
-    //    }
-    //    else {
-    //        return false;
-    //    }
-    //}
-
+    // don't vote for out-of-date candidates
     if (term < currentTerm) {//<=??
         return (false);
     }
+    // don't double vote
     if votedFor != "None" && votedFor != voteReq.candidateID {
         return (false);
     }
+    // check how up-to-date our log is
     int ourLastLogIndex = (lengthof log) - 1;
     int ourLastLogTerm = -1;
     if (lengthof log != 0) {
         ourLastLogTerm = log[ourLastLogIndex].term;
     }
-
+    // reject leaders with old logs
     if (voteReq.lastLogTerm < ourLastLogTerm) {
         return (false);
     }
-
+    // reject leaders with short logs
     if (voteReq.lastLogTerm == ourLastLogTerm && voteReq.lastLogIndex < ourLastLogIndex) { //checkk
         return (false);
     }

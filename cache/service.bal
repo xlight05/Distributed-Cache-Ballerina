@@ -160,7 +160,6 @@ service<http:Service> api bind listener {
         path: "/data/clear"
     }
     clear(endpoint caller, http:Request req) {
-
         http:Response res = new;
         cacheEntries.clear();
         json testJson = { "message": "Node entries Removed", "status": 200 };

@@ -9,22 +9,17 @@ consistent_bound:Consistent hashRing = new();
 //returns node list as a json
 function getNodeList() returns json {
     string [] nodeArr;
-    foreach item in clientMap {
+    foreach item in cacheClientMap {
         nodeArr[lengthof nodeArr]=item.config.url;
     }
     return check <json>nodeArr;
-}
-
-function setReplicationFactor() {
-    //better replication factor logic here
-    replicationFact = 1;
 }
 
 //TODO maintain counter in both sender and reciver to ensure request is recieved. or MB
 public function relocateData() {
     //lock{
         json changedJson = getChangedEntries();
-        foreach nodeItem in clientMap {
+        foreach nodeItem in relocationClientMap {
             string nodeIP = nodeItem.config.url;
             if (nodeIP == currentNode){ //Ignore if its the current node
                 continue;
@@ -53,12 +48,3 @@ public function relocateData() {
         }
     //}
 }
-
-
-//Adds servers in node list to hash ring
-function setServers() {
-    foreach item in clientMap {
-        hashRing.add(item.config.url);
-    }
-}
-

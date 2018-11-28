@@ -8,11 +8,11 @@ import ballerina/time;
 import ballerina/config;
 
 public function main(string... args) {
-    boolean localCacheEnabled = config:getAsBoolean("cache.localCache");
+    boolean localCacheEnabled = config:getAsBoolean("cache.local.cache");
     int capacity = config:getAsInt("cache.capacity");
-    float evictionFact = config:getAsFloat("cache.evictionFactor");
+    float evictionFact = config:getAsFloat("cache.eviction.factor");
     int partitions = config:getAsInt("consistent.hashing.partitions");
-    int replicationFact = config:getAsInt ("cache.replicationFact");
+    int replicationFact = config:getAsInt ("cache.replication.fact");
     int iteration = config:getAsInt ("benchmark.iteration");
     int nodes = config:getAsInt("benchmark.nodes");
 

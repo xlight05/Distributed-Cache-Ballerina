@@ -67,7 +67,7 @@ function getAllEntries() returns json {
 function getChangedEntries() returns json {
     json entries;
     //Init json according to nodes
-    foreach node in clientMap {
+    foreach node in cacheClientMap {
         if (node.config.url != currentNode) {
             entries[node.config.url] = [];
         }
@@ -143,7 +143,7 @@ function evictEntries() {
     // Return the array.
     json entries;
     //Node catagorize
-    foreach node in clientMap{
+    foreach node in cacheClientMap{
         if (node.config.url != currentNode) {
             entries[node.config.url] = [];
         }
@@ -166,7 +166,7 @@ function evictEntries() {
 }
 
 function evictReplicas(json entries) {
-    foreach nodeItem in clientMap {
+    foreach nodeItem in cacheClientMap {
         if (nodeItem.config.url == currentNode) { //Ignore if its the current node
             continue;
         }
@@ -232,7 +232,7 @@ function checkAndAddEntries(int numberOfKeysToEvict, string[] cacheKeys, int[] t
 
 function cacheExpiry() {
     json entries;
-    foreach node in clientMap{
+    foreach node in cacheClientMap{
         if (node.config.url != currentNode) {
             entries[node.config.url] = [];
         }
@@ -269,7 +269,7 @@ function removeReplicas(string key, string originalNode) {
         if (node == originalNode) {
             continue;
         }
-        http:Client? replicaNode = clientMap[node];
+        http:Client? replicaNode = cacheClientMap[node];
         match replicaNode {
             http:Client replica => {
                 nodeEndpoint = replica;

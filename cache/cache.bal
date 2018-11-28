@@ -7,8 +7,6 @@ import ballerina/config;
 //TODO Ensure node wont go out of memory.
 //TODO Healthchecks for accurate config values  | Packet loss -> higher retries , higher timeout |
 //TODO Better service discovery
-//TODO Improve retry mechanisms of put,get,remove
-//TODO Set smaller timeouts with retries for put get remove.
 //TODO Choose a better hashing algo. less collutions, high speed 
 endpoint http:Client nodeEndpoint {
     url: "http://localhost:" + config:getAsString("cache.port", default = "7000")
@@ -23,7 +21,7 @@ type Node record {
     string ip;
 };
 
-#    Represents a cache entry.
+# Represents a cache entry.
 #
 # + value - cache value
 # + key - key of the entry
@@ -40,16 +38,17 @@ type CacheEntry record {
     int expiryTimeMillis;
 };
 
-// Map which stores all of the caches.
+# Map which stores all of the caches.
 map<Cache> cacheMap;
 string currentIP = config:getAsString("cache.ip", default = "http://localhost");
 int currentPort = config:getAsInt("cache.port", default = 7000);
-int replicationFact = config:getAsInt("cache.replicationFact", default = 1);
-float cacheEvictionFactor = config:getAsFloat("cache.evictionFactor", default = 0.25);
+int replicationFact = config:getAsInt("cache.replication.fact", default = 1);
+float cacheEvictionFactor = config:getAsFloat("cache.eviction.factor", default = 0.25);
 int cacheCapacity = config:getAsInt("cache.capacity", default = 100000);
-boolean isLocalCacheEnabled = config:getAsBoolean("cache.localCache", default = false);
+boolean isLocalCacheEnabled = config:getAsBoolean("cache.local.cache", default = false);
 boolean isRelocationOrEvictionRunning = false;
-
+map <http:Client> cacheClientMap;
+map <http:Client> relocationClientMap;
 
 public function initNodeConfig() {
     //Suggestion rest para array suppot for config API
@@ -64,14 +63,14 @@ public function initNodeConfig() {
 
 }
 
-#Allows uesrs to create the cluster
+# Allows uesrs to create the cluster
 function createCluster() {
     startRaft();
 }
 
 
-#    Allows uesrs to join the cluster
-#    + nodeIPs - ips of the nodes in the cluster
+# Allows uesrs to join the cluster
+# + nodesInCfg - ips of the nodes in the cluster
 public function joinCluster(string[] nodesInCfg) {
     //sends join request to all nodes specified in config
     foreach node in nodesInCfg {
@@ -122,7 +121,7 @@ public function createCache(string name) {
 # + name - name of the cache object
 # + return - Cache object associated with the given name
 public function getCache(string name) returns Cache? {
-    foreach node in clientMap {
+    foreach node in cacheClientMap {
         nodeEndpoint = node;
         //changing the url of client endpoint
         var response = nodeEndpoint->get("/cache/get/" + name);
@@ -167,7 +166,7 @@ public type Cache object {
     int expiryTimeMillis;
     //TODO add time eviction support
     LocalCache nearCache = new(capacity = config:getAsInt("local.cache.capacity", default = 100), evictionFactor =
-        config:getAsFloat("local.cache.evictionFactor", default = 0.25)); //maybe move from the object?
+        config:getAsFloat("local.cache.eviction.factor", default = 0.25)); //maybe move from the object?
 
     public new(name, expiryTimeMillis = 60000) {
         //initNodeConfig();
@@ -211,7 +210,7 @@ public type Cache object {
         CacheEntry entry = { value: value, key: key, lastAccessedTime: currentTime, createdTime: currentTime, cacheName:
         self.name, replica: false, expiryTimeMillis: self.expiryTimeMillis };
         json entryJSON = check <json>entry;
-        http:Client? clientNode = clientMap[originalEntryNode];
+        http:Client? clientNode = cacheClientMap[originalEntryNode];
         match clientNode {
             http:Client client => {
                 nodeEndpoint = client;
@@ -314,9 +313,9 @@ public type Cache object {
         log:printWarn("Entry not found '" + key + "'");
         return ();
     }
-    //Clear whole cluster
+    # Clear all the entries in the cluster
     public function clearAllEntries() {
-        foreach node in clientMap {
+        foreach node in cacheClientMap {
             nodeEndpoint = node;
             json testJson = { "message": "Test JSON", "status": 200 };
             var response = nodeEndpoint->delete("/data/clear", testJson);
@@ -347,14 +346,14 @@ public type Cache object {
     # Returns the cached value associated with the given key. If the provided cache key is not found in the cluster, () will be returned.
     #
     # + key - key which is used to remove the entry
-public function remove(string key) {
+    public function remove(string key) {
         //Adding in to nearCache for quick retrival
         if (isLocalCacheEnabled) {
             nearCache.remove(key);
         }
         string nodeIP = hashRing.get(key);
         json entryJSON = { "key": key };
-        http:Client? clientNode = clientMap[nodeIP];
+        http:Client? clientNode = cacheClientMap[nodeIP];
         match clientNode {
             http:Client client => {
                 nodeEndpoint = client;
@@ -395,7 +394,7 @@ function putEntriesInToReplicas(json entryJSON, string key, string originalTarge
         if (node == originalTarget) {
             continue;
         }
-        http:Client? replicaNode = clientMap[node];
+        http:Client? replicaNode = cacheClientMap[node];
         match replicaNode {
             http:Client replica => {
                 nodeEndpoint = replica;
@@ -425,6 +424,8 @@ function putEntriesInToReplicas(json entryJSON, string key, string originalTarge
     }
 }
 
+# Updates last accessed time of certain entry
+#+ key - key of the cache entry that needs to be updated
 function updateLastAccessedTime(string key) {
     //Sending a get to replicas updates their last accessed time.
     string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
@@ -434,8 +435,12 @@ function updateLastAccessedTime(string key) {
     }
 }
 
+# Gets cache entries from target nodes.
+#+ ip - target Node ip
+#+ key - key of cache entry
+#+ return - entry if request succeed, error if failed
 function getEntryFromServer(string ip, string key) returns json|error {
-    http:Client? replicaNode = clientMap[ip];
+    http:Client? replicaNode = cacheClientMap[ip];
     match replicaNode {
         http:Client replica => {
             nodeEndpoint = replica;
@@ -466,12 +471,14 @@ function getEntryFromServer(string ip, string key) returns json|error {
         }
     }
 }
-//Debug functions to see which node a cerain key is located in
+# Debug functions to see which node a cerain key is located in
+#+ key - key of the entry that needs to be located
 public function locateNode(string key) {
     io:println(key + " located in ");
     io:println(hashRing.get(key));
 }
-//Debug functions to see which nodes a cerain replica key is located in
+#Debug functions to see which nodes a cerain replica key is located in
+#+ key - key of the entry that needs to be located
 public function locateReplicas(string key) {
     io:println(key + " replica located in ");
     string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
