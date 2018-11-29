@@ -21,9 +21,9 @@ public function relocateData() {
         json changedJson = getChangedEntries();
         foreach nodeItem in relocationClientMap {
             string nodeIP = nodeItem.config.url;
-            if (nodeIP == currentNode){ //Ignore if its the current node
-                continue;
-            }
+           // if (nodeIP == currentNode){ //Ignore if its the current node
+            //    continue;
+            //}
             nodeEndpoint = nodeItem;
             log:printInfo("Relocating data"+changedJson.toString());
             var res = nodeEndpoint->post("/data/multiple/store/", untaint changedJson[nodeIP]);

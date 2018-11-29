@@ -48,7 +48,7 @@ int commitIndex = 0;
 
 # The last command in the log to be applied to the state machine.
 int lastApplied = 0;
-task:Timer? timer;
+task:Timer? electionTimer;
 task:Timer? heartbeatTimer;
 map<int> candVoteLog;
 
@@ -96,9 +96,9 @@ public function startRaft() {
     int interval = math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT); //random election timeouts to prevent split vote
     (function () returns error?) onTriggerFunction = electLeader; //election timer trigger
     function (error) onErrorFunction = timerError;
-    timer = new task:Timer(onTriggerFunction, onErrorFunction,
+    electionTimer = new task:Timer(onTriggerFunction, onErrorFunction,
         interval);
-    timer.start();
+    electionTimer.start();
 
     boolean ready;
     ready <- raftReadyChan; //signals raft is ready
@@ -132,9 +132,9 @@ public function joinRaft() {
     int interval = math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT); //random election timeouts to prevent split vote
     (function () returns error?) onTriggerFunction = electLeader;
     function (error) onErrorFunction = timerError;
-    timer = new task:Timer(onTriggerFunction, onErrorFunction,
+    electionTimer = new task:Timer(onTriggerFunction, onErrorFunction,
         interval, delay = interval);
-    timer.start();
+    electionTimer.start();
     boolean ready;
     ready <- raftReadyChan; //signals raft is ready
 }
@@ -485,13 +485,13 @@ function timerError(error e) {
 function resetElectionTimer() {
     int interval = math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT);
     lock {
-        timer.stop();
+        electionTimer.stop();
         (function () returns error?) onTriggerFunction = electLeader;
 
         function (error) onErrorFunction = timerError;
-        timer = new task:Timer(onTriggerFunction, onErrorFunction,
+        electionTimer = new task:Timer(onTriggerFunction, onErrorFunction,
             interval);
-        timer.start();
+        electionTimer.start();
     }
 }
 
@@ -510,9 +510,9 @@ function startElectionTimer() {
     (function () returns error?) onTriggerFunction = electLeader;
 
     function (error) onErrorFunction = timerError;
-    timer = new task:Timer(onTriggerFunction, onErrorFunction,
+    electionTimer = new task:Timer(onTriggerFunction, onErrorFunction,
         interval, delay = interval);
-    timer.start();
+    electionTimer.start();
 }
 
 
@@ -630,18 +630,17 @@ function apply(string command) {
 
     if (command.substring(0, 2) == "NR") { //NODE Remove
         string ip = command.split(" ")[1];
-        //_ = suspectNodes.remove(ip);
         boolean sucess = clientRequest("NSR " + ip);
         if (sucess) {
             _ = raftClientMap.remove(ip);
+            _ = cacheClientMap.remove(ip);
+            _ = relocationClientMap.remove(ip);
             hashRing.removeNode(ip);
             //relocateData();
             // async?
             printSuspectedNodes();
             printClientNodes();
         }
-
-
     }
     log:printInfo(command + " Applied!!");
 }
