@@ -50,7 +50,7 @@ boolean isRelocationOrEvictionRunning = false;
 map <http:Client> cacheClientMap;
 map <http:Client> relocationClientMap;
 
-public function initNodeConfig() {
+public function initNodeConfig(){
     //Suggestion rest para array suppot for config API
     string hosts = config:getAsString("cache.hosts");
     string[] configNodeList = hosts.split(",");
@@ -60,7 +60,6 @@ public function initNodeConfig() {
     } else {
         joinCluster(configNodeList);
     }
-
 }
 
 # Allows uesrs to create the cluster
@@ -169,7 +168,6 @@ public type Cache object {
         config:getAsFloat("local.cache.eviction.factor", default = 0.25)); //maybe move from the object?
 
     public new(name, expiryTimeMillis = 60000) {
-        //initNodeConfig();
         var cacheObj = cacheMap[name];
         match cacheObj {
             Cache cache => {

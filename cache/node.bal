@@ -16,16 +16,13 @@ function getNodeList() returns json {
 }
 
 //TODO maintain counter in both sender and reciver to ensure request is recieved. or MB
-public function relocateData() {
+function relocateData() {
     //lock{
         json changedJson = getChangedEntries();
         foreach nodeItem in relocationClientMap {
             string nodeIP = nodeItem.config.url;
-           // if (nodeIP == currentNode){ //Ignore if its the current node
-            //    continue;
-            //}
             nodeEndpoint = nodeItem;
-            log:printInfo("Relocating data"+changedJson.toString());
+            log:printInfo("Relocating data");
             var res = nodeEndpoint->post("/data/multiple/store/", untaint changedJson[nodeIP]);
             //sends changed entries to correct node
             match res {

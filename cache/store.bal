@@ -63,40 +63,32 @@ function getAllEntries() returns json {
 }
 
 //Returns all the changed entries of the node catagorized according to node IP.
+//TODO fix extra entry issue
 function getChangedEntries() returns json {
     json entries;
     //Init json according to nodes
     foreach node in cacheClientMap {
-        //if (node.config.url != currentNode) {
-            entries[node.config.url] = [];
-        //}
+        entries[node.config.url] = [];
     }
     isRelocationOrEvictionRunning = true;
     foreach key, value in cacheEntries {
-        if (value.replica) {
+            string correctNodeIP = hashRing.get(value.key);
+            //Checks if the node is changed
+            if (correctNodeIP != currentNode) {//entry should be in a seprate node
+                entries[correctNodeIP][lengthof entries[correctNodeIP]] = check <json>value;
+                _ = cacheEntries.remove("O:"+value.cacheName+":"+value.key); //Assuming the response was recieved :/
+            }
             string[] replicaNodes = hashRing.GetClosestN(value.key, replicationFact);
             boolean remove = true;
             foreach replicaNode in replicaNodes {
-                //if (replicaNode != currentNode) {
-                    entries[replicaNode][lengthof entries[replicaNode]] = check <json>value;
-                //}
-                //else {
-                //    remove = false;
-                //}
+                if (replicaNode == currentNode) { //since the entry is the the same node no need to delete
+                    remove = false;
+                }
+                entries[replicaNode][lengthof entries[replicaNode]] = check <json>value;
             }
-            if (remove) {//TODO Remove after recieved response
-                _ = cacheEntries.remove(key);
+            if (remove) {
+                _ = cacheEntries.remove("R:"+value.cacheName+":"+value.key);
             }
-
-        } else {
-            string correctNodeIP = hashRing.get(value.key);
-            //Checks if the node is changed
-            //if (correctNodeIP != currentNode) {
-                //value["key"] = key;
-                entries[correctNodeIP][lengthof entries[correctNodeIP]] = check <json>value;
-                _ = cacheEntries.remove(key); //Assuming the response was recieved :/
-            //}
-        }
     }
     isRelocationOrEvictionRunning = false;
     return entries;

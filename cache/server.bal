@@ -8,7 +8,6 @@ endpoint http:Listener listener {
     port: config:getAsInt("raft.port", default = 7000)
 };
 
-
 type VoteRequest record {
     int term;
     string candidateID;
