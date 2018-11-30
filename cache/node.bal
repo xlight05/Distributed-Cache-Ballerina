@@ -6,6 +6,7 @@ import consistent_bound;
 
 consistent_bound:Consistent hashRing = new();
 
+
 //returns node list as a json
 function getNodeList() returns json {
     string [] nodeArr;
@@ -17,7 +18,7 @@ function getNodeList() returns json {
 
 //TODO maintain counter in both sender and reciver to ensure request is recieved. or MB
 function relocateData() {
-    //lock{
+    lock{
         json changedJson = getChangedEntries();
         foreach nodeItem in relocationClientMap {
             string nodeIP = nodeItem.config.url;
@@ -43,5 +44,5 @@ function relocateData() {
                 }
             }
         }
-    //}
+    }
 }

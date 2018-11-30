@@ -72,23 +72,53 @@ function getChangedEntries() returns json {
     }
     isRelocationOrEvictionRunning = true;
     foreach key, value in cacheEntries {
-            string correctNodeIP = hashRing.get(value.key);
-            //Checks if the node is changed
-            if (correctNodeIP != currentNode) {//entry should be in a seprate node
-                entries[correctNodeIP][lengthof entries[correctNodeIP]] = check <json>value;
-                _ = cacheEntries.remove("O:"+value.cacheName+":"+value.key); //Assuming the response was recieved :/
-            }
+        if (value.replica) {
             string[] replicaNodes = hashRing.GetClosestN(value.key, replicationFact);
             boolean remove = true;
             foreach replicaNode in replicaNodes {
-                if (replicaNode == currentNode) { //since the entry is the the same node no need to delete
+                if (replicaNode != currentNode) {
+                    entries[replicaNode][lengthof entries[replicaNode]] = check <json>value;
+                }
+                else {
                     remove = false;
                 }
-                entries[replicaNode][lengthof entries[replicaNode]] = check <json>value;
             }
-            if (remove) {
-                _ = cacheEntries.remove("R:"+value.cacheName+":"+value.key);
+            if (remove) {//TODO Remove after recieved response
+                _ = cacheEntries.remove(key);
             }
+            string correctNodeIP = hashRing.get(value.key);
+            if (correctNodeIP == currentNode){
+                string newKey = "O:"+value.cacheName + ":" + value.key;
+                CacheEntry newEntry = {cacheName:value.cacheName,value:value.value,key:value.key,lastAccessedTime:value.lastAccessedTime,expiryTimeMillis:value.expiryTimeMillis,replica:false};
+                cacheEntries[newKey]=newEntry;
+                io:println ("Lost original created "+ value.key);
+            }
+
+        } else {
+
+            string correctNodeIP = hashRing.get(value.key);
+            //Checks if the node is changed
+            if (correctNodeIP != currentNode) {
+                entries[correctNodeIP][lengthof entries[correctNodeIP]] = check <json>value;
+                _ = cacheEntries.remove(key); //Assuming the response was recieved :/
+            }
+            string[] replicaNodes = hashRing.GetClosestN(value.key, replicationFact);
+            //io:println ("wwwwwwawwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww");
+            //io:println (value.key +" replica is in "+replicaNodes[0]);
+            boolean found;
+            foreach i in replicaNodes {
+                if (i == currentNode){
+                    found = true;
+                }
+            }
+            if (found) {
+                string newKey = "R:" + value.cacheName + ":" + value.key;
+                CacheEntry newEntry = { cacheName: value.cacheName, value: value.value, key: value.key, lastAccessedTime
+                : value.lastAccessedTime, expiryTimeMillis: value.expiryTimeMillis, replica: true };
+                cacheEntries[newKey] = newEntry;
+                io:println ("Lost replica created "+ value.key);
+            }
+        }
     }
     isRelocationOrEvictionRunning = false;
     return entries;

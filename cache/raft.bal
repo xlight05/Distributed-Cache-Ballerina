@@ -635,7 +635,7 @@ function apply(string command) {
             _ = raftClientMap.remove(ip);
             _ = cacheClientMap.remove(ip);
             _ = relocationClientMap.remove(ip);
-            hashRing.removeNode(ip);
+            hashRing.removeNode(ip); //Todo Check remove nodes
             //relocateData();
             // async?
             printSuspectedNodes();
