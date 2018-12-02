@@ -196,7 +196,7 @@ function evictReplicas(json entries) {
             continue;
         }
         nodeEndpoint = nodeItem;
-        var res = nodeEndpoint->delete("/data/evict", untaint entries[nodeItem.config.url]);
+        var res = nodeEndpoint->delete("/cache/entries", untaint entries[nodeItem.config.url]);
         //sends changed entries to correct node
         match res {
             http:Response resp => {
@@ -295,7 +295,7 @@ function removeReplicas(string key, string originalNode) {
             http:Client replica => {
                 nodeEndpoint = replica;
                 json entryJSON = { "key": key };
-                var response = nodeEndpoint->delete("/data/store/", entryJSON);
+                var response = nodeEndpoint->delete("/cache/entries"+key, entryJSON);
                 match response {
                     http:Response resp => {
                         var msg = resp.getJsonPayload();

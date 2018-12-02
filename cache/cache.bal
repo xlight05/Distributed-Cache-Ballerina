@@ -123,7 +123,7 @@ public function getCache(string name) returns Cache? {
     foreach node in cacheClientMap {
         nodeEndpoint = node;
         //changing the url of client endpoint
-        var response = nodeEndpoint->get("/cache/get/" + name);
+        var response = nodeEndpoint->get("/cache/" + name);
         match response {
             http:Response resp => {
                 var msg = resp.getJsonPayload();
@@ -212,7 +212,7 @@ public type Cache object {
         match clientNode {
             http:Client client => {
                 nodeEndpoint = client;
-                var res = nodeEndpoint->post("/data/store/", entryJSON);
+                var res = nodeEndpoint->post("/cache/entries/"+key, entryJSON);
                 match res {
                     http:Response resp => {
                         var msg = resp.getJsonPayload();
@@ -310,39 +310,11 @@ public type Cache object {
         log:printWarn("Entry not found '" + key + "'");
         return ();
     }
-    # Clear all the entries in the cluster
-    public function clearAllEntries() {
-        foreach node in cacheClientMap {
-            nodeEndpoint = node;
-            json testJson = { "message": "Test JSON", "status": 200 };
-            var response = nodeEndpoint->delete("/data/clear", testJson);
-
-            match response {
-                http:Response resp => {
-                    var msg = resp.getJsonPayload();
-                    match msg {
-                        json jsonPayload => {
-
-                        }
-                        error err => {
-                            log:printError(err.message, err = err);
-                        }
-                    }
-                }
-                error err => {
-                    log:printError(err.message, err = err);
-                }
-            }
-        }
-        log:printInfo("Nodes Cleared");
-    }
-
-
-
 
     # Returns the cached value associated with the given key. If the provided cache key is not found in the cluster, () will be returned.
     #
     # + key - key which is used to remove the entry
+    //TODO Fix remove
     public function remove(string key) {
         //Adding in to nearCache for quick retrival
         if (isLocalCacheEnabled) {
@@ -354,7 +326,7 @@ public type Cache object {
         match clientNode {
             http:Client client => {
                 nodeEndpoint = client;
-                var res = nodeEndpoint->delete("/data/remove/", entryJSON);
+                var res = nodeEndpoint->delete("/cache/entries"+key, entryJSON);
                 match res {
                     http:Response resp => {
                         json|error msg = resp.getJsonPayload();
@@ -391,7 +363,7 @@ function putEntriesInToReplicas(json entryJSON, string key, string originalTarge
         match replicaNode {
             http:Client replica => {
                 nodeEndpoint = replica;
-                var response = nodeEndpoint->post("/data/store/", entryJSON);
+                var response = nodeEndpoint->post("/cache/entries"+key, entryJSON);
                 match response {
                     http:Response resp => {
                         var msg = resp.getJsonPayload();
@@ -437,7 +409,7 @@ function getEntryFromServer(string ip, string key) returns json|error {
     match replicaNode {
         http:Client replica => {
             nodeEndpoint = replica;
-            var res = nodeEndpoint->get("/data/get/" + key);
+            var res = nodeEndpoint->get("/cache/entries/" + key);
             match res {
                 http:Response resp => {
                     var msg = resp.getJsonPayload();

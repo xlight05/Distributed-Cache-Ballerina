@@ -4,14 +4,11 @@ import ballerina/crypto;
 import sort;
 import ballerina/log;
 
-
-//TODO Make this thread safe
 type Config record {
     int partitionCount;
     int replicationFactor;
     float load;
 };
-
 
 public type Consistent object {
     int[] sortedSet;
@@ -28,7 +25,6 @@ public type Consistent object {
     }
 
     public function add(string member) {
-        //TODO check if member exists)
         //Add
         foreach i in 0...replicationFactor - 1 {
             string key = member + i;
@@ -262,6 +258,4 @@ public type Consistent object {
         }
         return originalArr;
     }
-
-
 };
