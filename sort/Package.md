@@ -8,7 +8,7 @@ The `sort` allows you to perform efficient sorting algorithms. Functionality of 
 
 |                                 |       Version                  |
 |  :---------------------------:  |  :---------------------------: |
-|  Ballerina Language             |   0.970.0                      |
+|  Ballerina Language             |   0.983.0                      |
 
 ## Sample
 

@@ -130,7 +130,7 @@ public function getCache(string name) returns Cache? {
                 match msg {
                     json cacheJson => {
                         //if Cache object found in the node
-                        if (!(cacheJson["status"].toString() == "Not found")) {
+                        if (resp.statusCode!=204) {
                             Cache cacheObj = check <Cache>cacheJson;
                             cacheMap[name] = cacheObj;
                             //store object locally
@@ -265,10 +265,7 @@ public type Cache object {
                     return entry.value;
                 }
                 else {
-                    // log:printWarn (jsonPayload.toString());
                     log:printWarn("Entry not found '" + key + "'");
-                    locateNode(originalKey);
-                    //runtime:sleep (90000);
                     //returning is importent because  replicas might have consitency issues.
                     return ();
                 }

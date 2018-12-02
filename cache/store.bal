@@ -3,9 +3,10 @@ import ballerina/log;
 import ballerina/io;
 import ballerina/math;
 import ballerina/time;
+import consistent_bound;
 //This service is used to store data in nodes. Each service in the node acts as a local in memory store
 map<CacheEntry> cacheEntries;
-
+consistent_bound:Consistent hashRing = new();
 # Cache cleanup task starting delay in ms.
 @final int CACHE_CLEANUP_START_DELAY = 0;
 
@@ -15,7 +16,7 @@ map<CacheEntry> cacheEntries;
 task:Timer cacheCleanupTimer = createCacheCleanupTask();
 
 //Returns single cache entry according to given key
-function getCacheEntry(string key) returns json {
+function getCacheEntry(string key) returns json? {
     CacheEntry? cacheEntry = cacheEntries[key];
     match cacheEntry {
         CacheEntry entry => {
@@ -25,21 +26,20 @@ function getCacheEntry(string key) returns json {
                 // If it is expired, remove the cache and return nil.
                 _ = cacheEntries.remove(key);
                 _ = start removeReplicas(key, currentNode);
-                return { value: null };
+                return ();
             }
             //updates last accessed time
             entry.lastAccessedTime = time:currentTime().time;
             return check <json>entry;
         }
         () => {
-            json j = { value: null };
-            return j;
+            return ();
         }
     }
 }
 
 //Adds a single cache entry to the store
-function setCacheEntry(json entryJson) returns json {
+function setCacheEntry(json entryJson) returns string{
     CacheEntry entry = check <CacheEntry>entryJson;
     //checks if node size is exceeded
     if (cacheCapacity <= lengthof cacheEntries) {
@@ -53,7 +53,7 @@ function setCacheEntry(json entryJson) returns json {
         key = "O:" + key;
     }
     cacheEntries[key] = check <CacheEntry>entryJson;
-    return entryJson;
+    return entry.key;
 }
 
 //Returns all the cache entries avaialbe in the node
@@ -316,6 +316,37 @@ function removeReplicas(string key, string originalNode) {
             }
             () => {
                 log:printError("Client not found");
+            }
+        }
+    }
+}
+
+//TODO maintain counter in both sender and reciver to ensure request is recieved. or MB
+function relocateData() {
+    lock{
+        json changedJson = getChangedEntries();
+        foreach nodeItem in relocationClientMap {
+            string nodeIP = nodeItem.config.url;
+            nodeEndpoint = nodeItem;
+            log:printInfo("Relocating data");
+            var res = nodeEndpoint->post("/cache/entries", untaint changedJson[nodeIP]);
+            //sends changed entries to correct node
+            match res {
+                http:Response resp => {
+                    var msg = resp.getJsonPayload();
+                    match msg {
+                        json jsonPayload => {
+                            //TODO Remove after recieved response
+                            log:printInfo("Entries sent to " + nodeIP);
+                        }
+                        error err => {
+                            log:printError(err.message, err = err);
+                        }
+                    }
+                }
+                error err => {
+                    log:printError(err.message, err = err);
+                }
             }
         }
     }
