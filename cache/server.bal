@@ -9,18 +9,18 @@ endpoint http:Listener listener {
 };
 
 # An entry of the replicated log
-#+ term- Term of the entry
-#+ command - Command to be executed once the entry is commited
+# + term- Term of the entry
+# + command - Command to be executed once the entry is commited
 type LogEntry record {
     int term;
     string command;
 };
 
 # Incoming Vote Request from the candidate
-#+term - Candidate's term
-#+candidateID - Candidate's identifier
-#+lastLogIndex - Index of the last log entry of the candidate
-#+lastLogTerm - Term of the last log entry of the candidate
+# + term - Candidate's term
+# + candidateID - Candidate's identifier
+# + lastLogIndex - Index of the last log entry of the candidate
+# + lastLogTerm - Term of the last log entry of the candidate
 type VoteRequest record {
     int term;
     string candidateID;
@@ -29,20 +29,20 @@ type VoteRequest record {
 };
 
 # Response for a candidate vote request
-#+granted - Vote granted status
-#+term - Current term of the reciever's node
+# + granted - Vote granted status
+# + term - Current term of the reciever's node
 type VoteResponse record {
     boolean granted;
     int term;
 };
 
 # Heartbeat or new Entry request from the leader
-#+term- Leader's term
-#+leaderID - Leader's identifier
-#+prevLogIndex - Previous log index of the leader
-#+prevLogTerm - Previous log term of the leader
-#+entries - Contains non replicated entries from the leader. Empty for a hearbeat
-#+leaderCommit - Highest commit index of the leader
+# + term- Leader's term
+# + leaderID - Leader's identifier
+# + prevLogIndex - Previous log index of the leader
+# + prevLogTerm - Previous log term of the leader
+# + entries - Contains non replicated entries from the leader. Empty for a hearbeat
+# + leaderCommit - Highest commit index of the leader
 type AppendEntries record {
     int term;
     string leaderID;
@@ -53,19 +53,19 @@ type AppendEntries record {
 };
 
 # Response to a new entry request or heartbeat
-#+term- term of the reciever's node
-#+sucess - notifies if the new entries has been replicated
-#+followerMatchIndex - last commited index of the follower
+# + term- term of the reciever's node
+# + sucess - notifies if the new entries has been replicated
+# + followerMatchIndex - last commited index of the follower
 type AppendEntriesResponse record {
     int term;
     boolean sucess;
     int followerMatchIndex;
 };
 
-# The reponse for a cluster change Ex - Node add / remove
-#+sucess - status of the cluster config change
-#+leaderHint - last known leader of the cluster
-type ConfigChangeResponse record {
+# The reponse for a client intraction. This includes Cluster changes aswell
+# + sucess - status of the client request
+# + leaderHint - last known leader of the cluster
+type ClientResponse record {
     boolean sucess;
     string leaderHint;
 };
@@ -81,15 +81,15 @@ service<http:Service> raft bind listener {
         VoteRequest voteReq = check <VoteRequest>jsonPayload;
         log:printInfo("Vote request came from " + voteReq.candidateID);
         boolean granted = voteResponseHandle(voteReq);
-        VoteResponse res = { granted: granted, term: currentTerm };
-        log:printInfo("Vote status for " + voteReq.candidateID + " is " + res.granted);
+        VoteResponse voteResponse = { granted: granted, term: currentTerm };
+        log:printInfo("Vote status for " + voteReq.candidateID + " is " + voteResponse.granted);
         http:Response response;
-        response.setJsonPayload(check <json>res);
-
+        response.setJsonPayload(check <json>voteResponse);
         client->respond(response) but {
             error e => log:printError("Error in responding to vote request", err = e)
         };
     }
+
     @http:ResourceConfig {
         methods: ["POST"],
         path: "/append"
@@ -97,26 +97,23 @@ service<http:Service> raft bind listener {
     appendEntriesRPC(endpoint client, http:Request request) {
         json jsonPayload = check request.getJsonPayload();
         AppendEntries appendEntry = check <AppendEntries>jsonPayload;
-        AppendEntriesResponse res = heartbeatHandle(appendEntry);
+        AppendEntriesResponse appendEntriesResponse = heartbeatHandle(appendEntry);
         http:Response response;
-        response.setJsonPayload(untaint check <json>res);
-
+        response.setJsonPayload(untaint check <json>appendEntriesResponse);
         client->respond(response) but {
             error e => log:printError("Error in responding to append request", err = e)
         };
     }
 
-    //External
     @http:ResourceConfig {
         methods: ["POST"],
         path: "/server"
     }
     addServerRPC(endpoint client, http:Request request) {
         string ip = check request.getTextPayload();
-        ConfigChangeResponse res = addNode(ip);
+        ClientResponse configChangeResponse = addNode(ip);
         http:Response response;
-        response.setJsonPayload(check <json>res);
-
+        response.setJsonPayload(check <json>configChangeResponse);
         client->respond(response) but {
             error e => log:printError("Error in responding to add server", err = e)
         };
@@ -129,10 +126,9 @@ service<http:Service> raft bind listener {
     clientRequestRPC(endpoint client, http:Request request) {
         string command = check request.getTextPayload();
         boolean sucess = clientRequest(command);
-        ConfigChangeResponse res = { sucess: sucess, leaderHint: leader };
+        ClientResponse res = { sucess: sucess, leaderHint: leader };
         http:Response response;
         response.setJsonPayload(check <json>res);
-
         client->respond(response) but {
             error e => log:printError("Error in responding to client request", err = e)
         };
@@ -151,9 +147,8 @@ service<http:Service> raft bind listener {
                 break;
             }
         }
-        //TODO High timeout coz data relocation might be affected
-        var resp = raftEndpoint->get("/raft/failCheck/");
-        json j1;
+        var resp = raftEndpoint->get("/raft/fail/check/");
+        json responsePayload;
         match resp {
             http:Response payload => {
                 string result = check payload.getTextPayload();
@@ -163,16 +158,16 @@ service<http:Service> raft bind listener {
                 } else {
                     relocate = false;
                 }
-                j1 = { "status": true, "relocate": relocate };
+                responsePayload = { "status": true, "relocate": relocate };
             }
             error err => {
-                j1 = { "status": false, "relocate": false };
+                responsePayload = { "status": false, "relocate": false };
             }
         }
-        log:printInfo("Indirect ping for " + raftEndpoint.config.url + " Server Status : " + j1["status"].toString());
+        log:printInfo("Indirect ping for " + raftEndpoint.config.url + " Server Status : " + responsePayload["status"].
+                toString());
         http:Response response;
-        response.setJsonPayload(j1);
-
+        response.setJsonPayload(responsePayload);
         client->respond(response) but {
             error e => log:printError("Error in responding to indirect ping", err = e)
         };
@@ -180,7 +175,7 @@ service<http:Service> raft bind listener {
 
     @http:ResourceConfig {
         methods: ["GET"],
-        path: "/failCheck"
+        path: "/fail/check"
     }
     failCheckRPC(endpoint client, http:Request request) {
         string res;
@@ -191,7 +186,6 @@ service<http:Service> raft bind listener {
         }
         http:Response response;
         response.setTextPayload(res);
-
         client->respond(response) but {
             error e => log:printError("Error in responding to fail check RPC", err = e)
         };
@@ -296,6 +290,9 @@ function voteResponseHandle(VoteRequest voteReq) returns boolean {
     return true;
 }
 
+# Gets term number of a given index
+# + index - Index of the entry
+# + return - term of the entry
 function getTerm(int index) returns int {
     if (index < 1 || index >= lengthof log) {
         return 0;

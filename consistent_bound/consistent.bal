@@ -153,13 +153,13 @@ public type Consistent object {
         map<string> kmems;
         int ownerKey;
         //hash members
-        foreach key, value in members {
-            int nodeKey = getCrc32HashDecimal(key);
-            if (key == owner){
+        foreach k, v in members {
+            int nodeKey = getCrc32HashDecimal(k);
+            if (k == owner){
                 ownerKey = nodeKey;
             }
             keys[lengthof keys] = nodeKey;
-            kmems[<string>nodeKey] = value;
+            kmems[<string>nodeKey] = v;
         }
         //sort members
         keys = sort:mergeSort(keys);

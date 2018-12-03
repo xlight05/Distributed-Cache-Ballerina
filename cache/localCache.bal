@@ -2,17 +2,40 @@ import ballerina/system;
 import ballerina/task;
 import ballerina/time;
 
+map<LocalCache> localCacheMap;
+
+# Cache cleanup task starting delay in ms.
+@final int LOCAL_CACHE_CLEANUP_START_DELAY = 0;
+
+# Cache cleanup task invoking interval in ms.
+@final int LOCAL_CACHE_CLEANUP_INTERVAL = 5000;
+
+# Cleanup task which cleans the cache periodically.
+task:Timer localCacheCleanupTimer = createlocalCacheCleanupTask();
+
+# Represents a cache entry.
+#
+# + value - cache value
+# + lastAccessedTime - last accessed time in ms of this value which is used to remove LRU cached values
 type LocalCacheEntry record {
     any value;
     int lastAccessedTime;
+    !...
 };
 public type LocalCache object {
 
     private int capacity;
     map<LocalCacheEntry> entries;
     private float evictionFactor;
+    int expiryTimeMillis;
+    private string name;
 
-    public new(capacity = 100, evictionFactor = 0.25) {
+    public new(name,expiryTimeMillis = 900000, capacity = 100, evictionFactor = 0.25) {
+        // Cache expiry time must be a positive value.
+        if (expiryTimeMillis <= 0) {
+            error e = { message: "Expiry time must be greater than 0." };
+            throw e;
+        }
         // Cache capacity must be a positive value.
         if (capacity <= 0) {
             error e = { message: "Capacity must be greater than 0." };
@@ -23,6 +46,7 @@ public type LocalCache object {
             error e = { message: "Cache eviction factor must be between 0.0 (exclusive) and 1.0 (inclusive)." };
             throw e;
         }
+        localCacheMap[name]=self;
     }
 
 
@@ -38,9 +62,7 @@ public type LocalCache object {
     public function put(string key, any value) {
         // We need to synchronize this process otherwise concurrecy might cause issues.
         lock {
-
             int cacheSize = lengthof entries;
-
             // If the current cache is full, evict cache.
             if (self.capacity <= cacheSize) {
                 evict();
@@ -76,8 +98,14 @@ public type LocalCache object {
 
         match cacheEntry {
             LocalCacheEntry entry => {
+                int currentSystemTime = time:currentTime().time;
+                if (currentSystemTime >= entry.lastAccessedTime + expiryTimeMillis) {
+                    // If it is expired, remove the cache and return nil.
+                    remove(key);
+                    return ();
+                }
                 // Modify the last accessed time and return the cache if it is not expired.
-                entry.lastAccessedTime = time:currentTime().time;
+                entry.lastAccessedTime = currentSystemTime;
                 return entry.value;
             }
             () => {
@@ -121,6 +149,37 @@ public type LocalCache object {
     }
 };
 
+# Removes expired cache entries from all caches.
+#
+# + return - Any error which occured during cache expiration
+function runCacheExpiry() returns error? {
+    // Iterate through all caches.
+    foreach currentCacheKey, currentCache in localCacheMap {
+        // Get the expiry time of the current cache
+        int currentCacheExpiryTime = currentCache.expiryTimeMillis;
+        // Create a new array to store keys of cache entries which needs to be removed.
+        string[] cachesToBeRemoved = [];
+        int cachesToBeRemovedIndex = 0;
+        // Iterate through all keys.
+        foreach key, entry in currentCache.entries {
+            // Get the current system time.
+            int currentSystemTime = time:currentTime().time;
+            // Check whether the cache entry needs to be removed.
+            if (currentSystemTime >= entry.lastAccessedTime + currentCacheExpiryTime) {
+                cachesToBeRemoved[cachesToBeRemovedIndex] = key;
+                cachesToBeRemovedIndex = cachesToBeRemovedIndex + 1;
+            }
+        }
+        // Iterate through the key list which needs to be removed.
+        foreach currentKeyIndex in 0..<cachesToBeRemovedIndex {
+            string key = cachesToBeRemoved[currentKeyIndex];
+            // Remove the cache entry.
+            _ = currentCache.entries.remove(key);
+        }
+    }
+    return ();
+}
+
 function checkAndAdd(int numberOfKeysToEvict, string[] cacheKeys, int[] timestamps, string key, int lastAccessTime) {
     string myKey = key;
     int myLastAccessTime = lastAccessTime;
@@ -150,4 +209,14 @@ function checkAndAdd(int numberOfKeysToEvict, string[] cacheKeys, int[] timestam
             }
         }
     }
+}
+
+# Creates a new cache cleanup task.
+#
+# + return - cache cleanup task ID
+function createlocalCacheCleanupTask() returns task:Timer {
+    (function () returns error?) onTriggerFunction = runCacheExpiry;
+    task:Timer localTimer = new(onTriggerFunction, (), LOCAL_CACHE_CLEANUP_INTERVAL, delay = LOCAL_CACHE_CLEANUP_START_DELAY);
+    localTimer.start();
+    return localTimer;
 }

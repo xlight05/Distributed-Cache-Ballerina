@@ -307,7 +307,7 @@ function startProcessingSuspects() {
 }
 
 # Check a suspected node by sending indirect requests periodically.
-#+ node- http client of the suspected node
+# + node- http client of the suspected node
 function checkSuspectedNode(SuspectNode node) {
     //TODO maybe backoff factor
     if (state != "Leader") {
@@ -379,7 +379,7 @@ function checkSuspectedNode(SuspectNode node) {
 }
 
 # Gives a healthy ndoe in the cluster for indirect RPCs
-#+return - Retruns a healthy node or current node if no other healthy nodes available
+# +return - Retruns a healthy node or current node if no other healthy nodes available
 function getHealthyNode() returns http:Client {
     http:Client client;
     foreach i in raftClientMap {
@@ -511,9 +511,9 @@ function clientRequest(string command) returns boolean {
 }
 
 # Requests to add a node to the cluster
-#+ip - IP of the new node
-#+return - member join status (sucess or not) , last known leader
-function addNode(string ip) returns ConfigChangeResponse {
+# +ip - IP of the new node
+# +return - member join status (sucess or not) , last known leader
+function addNode(string ip) returns ClientResponse {
     if (state != "Leader") {
         return { sucess: false, leaderHint: leader };
     } else {
@@ -612,8 +612,8 @@ function apply(string command) {
     log:printInfo(command + " Applied!!");
 }
 
-#Prints all the nodes in raft
-#Debug only
+# Prints all the nodes in raft
+# Debug only
 function printClientNodes() {
     io:println("Client map list");
     foreach i in raftClientMap {
@@ -621,8 +621,8 @@ function printClientNodes() {
     }
 }
 
-#Prints all the suspected nodes
-#Debug only
+# Prints all the suspected nodes
+# Debug only
 function printSuspectedNodes() {
     io:println("Suspected node list");
     foreach i in suspectNodes {

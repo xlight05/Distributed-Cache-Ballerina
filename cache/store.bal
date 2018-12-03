@@ -4,7 +4,8 @@ import ballerina/io;
 import ballerina/math;
 import ballerina/time;
 import consistent_bound;
-//This service is used to store data in nodes. Each service in the node acts as a local in memory store
+
+# cacheEntries contains all the entries in the current node
 map<CacheEntry> cacheEntries;
 consistent_bound:Consistent hashRing = new();
 # Cache cleanup task starting delay in ms.
@@ -83,7 +84,7 @@ function getChangedEntries() returns json {
                     remove = false;
                 }
             }
-            if (remove) {//TODO Remove after recieved response
+            if (remove) {
                 _ = cacheEntries.remove(key);
             }
             string correctNodeIP = hashRing.get(value.key);
@@ -95,7 +96,6 @@ function getChangedEntries() returns json {
             }
 
         } else {
-
             string correctNodeIP = hashRing.get(value.key);
             //Checks if the node is changed
             if (correctNodeIP != currentNode) {
@@ -103,8 +103,6 @@ function getChangedEntries() returns json {
                 _ = cacheEntries.remove(key); //Assuming the response was recieved :/
             }
             string[] replicaNodes = hashRing.GetClosestN(value.key, replicationFact);
-            //io:println ("wwwwwwawwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww");
-            //io:println (value.key +" replica is in "+replicaNodes[0]);
             boolean found;
             foreach i in replicaNodes {
                 if (i == currentNode){
@@ -128,7 +126,6 @@ function storeMultipleEntries(json jsonObj) {
     log:printInfo("Recieved entries" + jsonObj.toString());
     if (cacheCapacity <= lengthof cacheEntries + lengthof jsonObj) {
         evictEntries();
-        //use cannels to evict and store at the same time
     }
     lock {
         isRelocationOrEvictionRunning = true;
@@ -165,18 +162,14 @@ function evictEntries() {
     json entries;
     //Node catagorize
     foreach node in cacheClientMap{
-        //if (node.config.url != currentNode) {
             entries[node.config.url] = [];
-        //}
     }
     foreach c in cacheKeysToBeRemoved {
         string plainKey = c.split(":")[2];
         // These cache values are ignred. So it is not needed to check the return value for the remove function.
         string[] replicaNodes = hashRing.GetClosestN(plainKey, replicationFact);
         foreach node in replicaNodes {
-            //if (node != currentNode) {
                 entries[node][lengthof entries[node]] = "R:" + c.split(":")[1]+":"+c.split(":")[2];
-            //}
         }
         _ = cacheEntries.remove(c);
         log:printInfo(c + " Entry Evicted");
@@ -188,9 +181,6 @@ function evictEntries() {
 
 function evictReplicas(json entries) {
     foreach nodeItem in cacheClientMap {
-        //if (nodeItem.config.url == currentNode) { //Ignore if its the current node
-        //    continue;
-        //}
         if (lengthof entries[nodeItem.config.url]== 0){
             //if not replicas evicted no need to send the request
             continue;
@@ -254,21 +244,14 @@ function checkAndAddEntries(int numberOfKeysToEvict, string[] cacheKeys, int[] t
 function cacheExpiry() {
     json entries;
     foreach node in cacheClientMap{
-        //if (node.config.url != currentNode) {
             entries[node.config.url] = [];
-        //}
     }
     foreach key, value in cacheEntries {
         int currentSystemTime = time:currentTime().time;
         if (currentSystemTime >= value.lastAccessedTime + value.expiryTimeMillis) {
-            //if (value.replica) {
-            //    continue;
-            //}
             string[] replicaNodes = hashRing.GetClosestN(value.key, replicationFact);
             foreach node in replicaNodes {
-                //if (node != currentNode) {
                     entries[node][lengthof entries[node]] = "R:" + key.split(":")[1];
-                //}
             }
             _ = cacheEntries.remove(key);
         }
@@ -287,9 +270,6 @@ function createCacheCleanupTask() returns task:Timer {
 function removeReplicas(string key, string originalNode) {
     string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
     foreach node in replicaNodes {
-        //if (node == originalNode) {
-        //    continue;
-        //}
         http:Client? replicaNode = cacheClientMap[node];
         match replicaNode {
             http:Client replica => {
@@ -309,7 +289,6 @@ function removeReplicas(string key, string originalNode) {
                         }
                     }
                     error err => {
-                        //TODO Add queue
                         log:printError(err.message, err = err);
                     }
                 }
@@ -336,7 +315,6 @@ function relocateData() {
                     var msg = resp.getJsonPayload();
                     match msg {
                         json jsonPayload => {
-                            //TODO Remove after recieved response
                             log:printInfo("Entries sent to " + nodeIP);
                         }
                         error err => {

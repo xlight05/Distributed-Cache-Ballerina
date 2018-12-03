@@ -13,7 +13,6 @@ endpoint http:Client nodeEndpoint {
 };
 
 # Represents a node in the cluster
-#
 # + id - Node ID
 # + ip - IP of the node
 type Node record {
@@ -22,7 +21,6 @@ type Node record {
 };
 
 # Represents a cache entry.
-#
 # + value - cache value
 # + key - key of the entry
 # + lastAccessedTime - last accessed time in ms of this value which is used to remove LRU cached values
@@ -67,7 +65,6 @@ function createCluster() {
     startRaft();
 }
 
-
 # Allows uesrs to join the cluster
 # + nodesInCfg - ips of the nodes in the cluster
 public function joinCluster(string[] nodesInCfg) {
@@ -80,7 +77,7 @@ public function joinCluster(string[] nodesInCfg) {
         var ee = nodeEndpoint->post("/raft/server", currentNode);
         match ee {
             http:Response payload => {
-                ConfigChangeResponse result = check <ConfigChangeResponse>check payload.getJsonPayload();
+                ClientResponse result = check <ClientResponse>check payload.getJsonPayload();
                 //if node is the leader join the cluster
                 if (result.sucess) {
                     joinRaft();
@@ -116,7 +113,6 @@ public function createCache(string name) {
 }
 
 # Allows users to create a cache object
-#
 # + name - name of the cache object
 # + return - Cache object associated with the given name
 public function getCache(string name) returns Cache? {
@@ -158,14 +154,13 @@ type CacheConfig record {
     int maxEntrySize;
 };
 
-
 # Represents a cache.
 public type Cache object {
     string name;
     int expiryTimeMillis;
     //TODO add time eviction support
-    LocalCache nearCache = new(capacity = config:getAsInt("local.cache.capacity", default = 100), evictionFactor =
-        config:getAsFloat("local.cache.eviction.factor", default = 0.25)); //maybe move from the object?
+    LocalCache nearCache = new(name,capacity = config:getAsInt("local.cache.capacity", default = 100), evictionFactor =
+        config:getAsFloat("local.cache.eviction.factor", default = 0.25),expiryTimeMillis = expiryTimeMillis); //maybe move from the object?
 
     public new(name, expiryTimeMillis = 60000) {
         var cacheObj = cacheMap[name];
@@ -193,10 +188,8 @@ public type Cache object {
     }
 
     # Adds the given key, value pair to the provided cache.It will be stored in a appropirate node in the cluster
-    #
     # + key - value which should be used as the key
     # + value - value to be cached
-
     public function put(string key, any value) {
         //Adding in to nearCache for quick retrival
         if (isLocalCacheEnabled) {
@@ -237,9 +230,7 @@ public type Cache object {
         }
     }
 
-
     # Returns the cached value associated with the given key. If the provided cache key is not found in the cluster, () will be returned.
-    #
     # + key - key which is used to retrieve the cached value
     # + return  -The cached value associated with the given key
     public function get(string key) returns any? {
@@ -261,6 +252,7 @@ public type Cache object {
             json jsonPayload => {
                 if (jsonPayload.value != null) {
                     CacheEntry entry = check <CacheEntry>jsonPayload;
+                    nearCache.put(key, entry.value); //add to near cache for quick retrival
                     //log:printInfo("Entry found '" + key + "'");
                     return entry.value;
                 }
@@ -309,7 +301,6 @@ public type Cache object {
     }
 
     # Returns the cached value associated with the given key. If the provided cache key is not found in the cluster, () will be returned.
-    #
     # + key - key which is used to remove the entry
     //TODO Fix remove
     public function remove(string key) {
@@ -387,7 +378,7 @@ function putEntriesInToReplicas(json entryJSON, string key, string originalTarge
 }
 
 # Updates last accessed time of certain entry
-#+ key - key of the cache entry that needs to be updated
+# + key - key of the cache entry that needs to be updated
 function updateLastAccessedTime(string key) {
     //Sending a get to replicas updates their last accessed time.
     string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
@@ -398,9 +389,9 @@ function updateLastAccessedTime(string key) {
 }
 
 # Gets cache entries from target nodes.
-#+ ip - target Node ip
-#+ key - key of cache entry
-#+ return - entry if request succeed, error if failed
+# + ip - target Node ip
+# + key - key of cache entry
+# + return - entry if request succeed, error if failed
 function getEntryFromServer(string ip, string key) returns json|error {
     http:Client? replicaNode = cacheClientMap[ip];
     match replicaNode {
@@ -434,13 +425,13 @@ function getEntryFromServer(string ip, string key) returns json|error {
     }
 }
 # Debug functions to see which node a cerain key is located in
-#+ key - key of the entry that needs to be located
+# + key - key of the entry that needs to be located
 public function locateNode(string key) {
     io:println(key + " located in ");
     io:println(hashRing.get(key));
 }
-#Debug functions to see which nodes a cerain replica key is located in
-#+ key - key of the entry that needs to be located
+# Debug functions to see which nodes a cerain replica key is located in
+# + key - key of the entry that needs to be located
 public function locateReplicas(string key) {
     io:println(key + " replica located in ");
     string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
