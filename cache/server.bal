@@ -8,6 +8,19 @@ endpoint http:Listener listener {
     port: config:getAsInt("raft.port", default = 7000)
 };
 
+# An entry of the replicated log
+#+ term- Term of the entry
+#+ command - Command to be executed once the entry is commited
+type LogEntry record {
+    int term;
+    string command;
+};
+
+# Incoming Vote Request from the candidate
+#+term - Candidate's term
+#+candidateID - Candidate's identifier
+#+lastLogIndex - Index of the last log entry of the candidate
+#+lastLogTerm - Term of the last log entry of the candidate
 type VoteRequest record {
     int term;
     string candidateID;
@@ -15,11 +28,21 @@ type VoteRequest record {
     int lastLogTerm;
 };
 
+# Response for a candidate vote request
+#+granted - Vote granted status
+#+term - Current term of the reciever's node
 type VoteResponse record {
     boolean granted;
     int term;
 };
 
+# Heartbeat or new Entry request from the leader
+#+term- Leader's term
+#+leaderID - Leader's identifier
+#+prevLogIndex - Previous log index of the leader
+#+prevLogTerm - Previous log term of the leader
+#+entries - Contains non replicated entries from the leader. Empty for a hearbeat
+#+leaderCommit - Highest commit index of the leader
 type AppendEntries record {
     int term;
     string leaderID;
@@ -29,17 +52,19 @@ type AppendEntries record {
     int leaderCommit;
 };
 
-type LogEntry record {
-    int term;
-    string command;
-};
-
+# Response to a new entry request or heartbeat
+#+term- term of the reciever's node
+#+sucess - notifies if the new entries has been replicated
+#+followerMatchIndex - last commited index of the follower
 type AppendEntriesResponse record {
     int term;
     boolean sucess;
     int followerMatchIndex;
 };
 
+# The reponse for a cluster change Ex - Node add / remove
+#+sucess - status of the cluster config change
+#+leaderHint - last known leader of the cluster
 type ConfigChangeResponse record {
     boolean sucess;
     string leaderHint;
@@ -245,12 +270,12 @@ function voteResponseHandle(VoteRequest voteReq) returns boolean {
         //Leader variable init
     }
     // don't vote for out-of-date candidates
-    if (term < currentTerm) {//<=??
-        return (false);
+    if (term < currentTerm) {
+        return false;
     }
     // don't double vote
     if votedFor != "None" && votedFor != voteReq.candidateID {
-        return (false);
+        return false;
     }
     // check how up-to-date our log is
     int ourLastLogIndex = (lengthof log) - 1;
@@ -260,13 +285,12 @@ function voteResponseHandle(VoteRequest voteReq) returns boolean {
     }
     // reject leaders with old logs
     if (voteReq.lastLogTerm < ourLastLogTerm) {
-        return (false);
+        return false;
     }
     // reject leaders with short logs
-    if (voteReq.lastLogTerm == ourLastLogTerm && voteReq.lastLogIndex < ourLastLogIndex) { //checkk
-        return (false);
+    if (voteReq.lastLogTerm == ourLastLogTerm && voteReq.lastLogIndex < ourLastLogIndex) {
+        return false;
     }
-
     resetElectionTimer();
     votedFor = untaint voteReq.candidateID;
     return true;

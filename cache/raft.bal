@@ -7,10 +7,6 @@ import ballerina/log;
 import ballerina/config;
 import ballerina/http;
 
-//TODO LOCKS
-//TODO LAG Test
-//TODO Partition Test
-
 endpoint http:Client raftEndpoint {
     url: "http://localhost:3000"
 };
@@ -58,9 +54,7 @@ map<int> candVoteLog;
 map<int> nextIndex;
 
 # matchIndex is a measurement of how much of our log (as leader) we know to be
-# replicated at each other server. This is used to determine when some prefix
-# of entries in our log from the current term has been replicated to a
-# majority of servers, and is thus safe to apply.
+# replicated at each other server.
 map<int> matchIndex;
 
 # raftReadyChannel helps to notify the application ones raft is ready
@@ -104,28 +98,6 @@ public function startRaft() {
     ready <- raftReadyChan; //signals raft is ready
 }
 
-//function printStats() {
-//    io:println("State :" + state);
-//    io:println("Current Term :" + currentTerm);
-//    io:print("Log :");
-//    io:println(log);
-//    io:println("Commit Index :" + commitIndex);
-//    io:println("Leader Vars ");
-//    io:println("Next Index :");
-//    foreach k, v in nextIndex {
-//        io:println(k + " : " + v);
-//    }
-//    io:println("Match Index :");
-//    foreach k, v in matchIndex {
-//        io:println(k + " : " + v);
-//    }
-//    io:println("Client list :");
-//    foreach i in clientMap{
-//        io:println(i.config.url);
-//    }
-//    io:println();
-//}
-
 public function joinRaft() {
     nextIndex[currentNode] = 1;
     matchIndex[currentNode] = 0;
@@ -166,8 +138,6 @@ function electLeader() {
         state = "Follower";
         votedFor = "None";
         //heartbeatTimer.stop();
-        //not sure if started
-        //stepdown
     } else {
         state = "Leader";
         leader = currentNode;
@@ -273,14 +243,14 @@ function heartbeatChannel(http:Client node) {
     }
     string peer = node.config.url;
     int nextIndexOfPeer = nextIndex[peer] ?: 0; //Next index to be sent to the peer
-    int prevLogIndex = nextIndexOfPeer - 1; //
+    int prevLogIndex = nextIndexOfPeer - 1; //Last Index that needs to be sent to their peer
     int prevLogTerm = 0;
     if (prevLogIndex > 0) {
-        prevLogTerm = log[prevLogIndex].term;
+        prevLogTerm = log[prevLogIndex].term; //last term that needs to be sent to their peer
     }
     LogEntry[] entryList;
     foreach i in prevLogIndex...lengthof log - 1 {
-        entryList[lengthof entryList] = log[i];
+        entryList[lengthof entryList] = log[i]; //non replicated entry list empty in a healthy heartbeat
     }
     AppendEntries appendEntry = {
         term: currentTerm,
@@ -295,19 +265,20 @@ function heartbeatChannel(http:Client node) {
     match heartbeatResp {
         http:Response payload => {
             AppendEntriesResponse result = check <AppendEntriesResponse>check payload.getJsonPayload();
-            if (result.sucess) {
+            if (result.sucess) { //if node's log is on par with leaders log
                 matchIndex[peer] = result.followerMatchIndex;
                 nextIndex[peer] = result.followerMatchIndex + 1; //atomicc
-            } else {
+            } else {//if node log is behind with leaders log
                 nextIndex[peer] = max(1, nextIndexOfPeer - 1);
-                io:println("Another one?");
+                log:printInfo("Catching up the node with leader");
                 heartbeatChannel(node);
             }
         }
         error err => {
             log:printError("Heartbeat failed: " + err.message + "\n");
-            //commit suspect
+            //begin to suspect
             boolean found = false;
+            //check if already a suspect
             foreach suspect in suspectNodes {
                 if (suspect.ip == node.config.url) {
                     found = true;
@@ -319,23 +290,24 @@ function heartbeatChannel(http:Client node) {
                 client.init(cc);
                 SuspectNode sNode = { ip: node.config.url, client: client, suspectRate: 0 };
                 suspectNodes[node.config.url] = sNode;
-                boolean commited = clientRequest("NSA " + node.config.url);
+                boolean commited = clientRequest("NSA " + node.config.url); //commit node as suspected
                 // cant commit here, if doesnt hv majority wut to do
                 log:printInfo(node.config.url + " added to suspect list");
                 //commited?
             }
         }
     }
-    //commitEntry();
 }
 
+# Starts processing existing suspects once a new leader is elected
 function startProcessingSuspects() {
     foreach suspect in suspectNodes {
         _ = start checkSuspectedNode(suspect);
     }
 }
-//executed ones few appendRPC fails
-//assuming nodes are in suspect state
+
+# Check a suspected node by sending indirect requests periodically.
+#+ node- http client of the suspected node
 function checkSuspectedNode(SuspectNode node) {
     //TODO maybe backoff factor
     if (state != "Leader") {
@@ -406,9 +378,12 @@ function checkSuspectedNode(SuspectNode node) {
     }
 }
 
+# Gives a healthy ndoe in the cluster for indirect RPCs
+#+return - Retruns a healthy node or current node if no other healthy nodes available
 function getHealthyNode() returns http:Client {
     http:Client client;
     foreach i in raftClientMap {
+        //skip current node first
         if (i.config.url == currentNode) {
             continue;
         }
@@ -422,8 +397,7 @@ function getHealthyNode() returns http:Client {
             client = i;
         }
     }
-
-    //if none return current Node ?
+    //if none return current Node
     foreach i in raftClientMap {
         if (i.config.url == currentNode) {
             client = i;
@@ -432,13 +406,14 @@ function getHealthyNode() returns http:Client {
     return client;
 }
 
+# Commits entries of leaders log
 function commitEntry() {
     if (state != "Leader") {
         return;
     }
     int item = lengthof log - 1;
     while (item > commitIndex) {
-        int replicatedCount = 1; //number of nodes
+        int replicatedCount = 1; //replicated node count
         foreach server in raftClientMap {
             if (server.config.url == currentNode) {
                 continue;
@@ -515,7 +490,8 @@ function startElectionTimer() {
     electionTimer.start();
 }
 
-
+//TODO linearizable semantics
+//TODO Timeout if not committed
 function clientRequest(string command) returns boolean {
     if (state == "Leader") {
         int entryIndex = lengthof log;
@@ -523,19 +499,20 @@ function clientRequest(string command) returns boolean {
         future ee = start sendHeartbeats();
         _ = await ee;
         //without majority no nop :S
-        //check if commited moree
+        //check if commited
         if (commitIndex >= entryIndex) {
             return true;
         } else {
             return false;
         }
-
     } else {
         return false;
     }
 }
 
-
+# Requests to add a node to the cluster
+#+ip - IP of the new node
+#+return - member join status (sucess or not) , last known leader
 function addNode(string ip) returns ConfigChangeResponse {
     if (state != "Leader") {
         return { sucess: false, leaderHint: leader };
@@ -552,8 +529,7 @@ function addNode(string ip) returns ConfigChangeResponse {
     }
 }
 
-
-
+# Applies a certain command to the state machine
 function apply(string command) {
     if (command.substring(0, 2) == "NA") { //NODE ADD
         string ip = command.split(" ")[1];
@@ -584,7 +560,7 @@ function apply(string command) {
                 interval: config:getAsInt("cache.request.timeout", default = 2000)/2,
                 count: 1,
                 backOffFactor: 1.0,
-                maxWaitInterval: 5000//??
+                maxWaitInterval: 5000
             }
         };
         cacheClient.init(cacheClientCfg);
@@ -602,17 +578,10 @@ function apply(string command) {
         nextIndex[ip] = 1;
         matchIndex[ip] = 0;
         hashRing.add(ip);
-        //relocateData();
-        // async?  //incositant while catching up a new node?
     }
 
     if (command.substring(0, 3) == "NSA") { //NODE SUSPECT Add
         string ip = command.split(" ")[1];
-        //foreach item in suspectNodes { // temp. check heartbeat commiting agian
-        //    if (item.ip == ip) {
-        //        return;
-        //    }
-        //}
         http:Client client;
         http:ClientEndpointConfig cc = { url: ip, timeoutMillis: 60000 };
         client.init(cc);
@@ -636,8 +605,6 @@ function apply(string command) {
             _ = cacheClientMap.remove(ip);
             _ = relocationClientMap.remove(ip);
             hashRing.removeNode(ip); //Todo Check remove nodes
-            //relocateData();
-            // async?
             printSuspectedNodes();
             printClientNodes();
         }
@@ -645,6 +612,8 @@ function apply(string command) {
     log:printInfo(command + " Applied!!");
 }
 
+#Prints all the nodes in raft
+#Debug only
 function printClientNodes() {
     io:println("Client map list");
     foreach i in raftClientMap {
@@ -652,6 +621,8 @@ function printClientNodes() {
     }
 }
 
+#Prints all the suspected nodes
+#Debug only
 function printSuspectedNodes() {
     io:println("Suspected node list");
     foreach i in suspectNodes {
