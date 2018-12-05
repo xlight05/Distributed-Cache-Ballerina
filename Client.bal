@@ -10,8 +10,6 @@ public function main(string... args) {
     _ = cache:initNodeConfig();
     cache:Cache oauthCache = new("oauthCache",expiryTimeMillis=30000);
 
-    //oauthCache.put("Name", "Ballerina");
-
     oauthCache.put("1", "1");
     oauthCache.put("2", "2");
     oauthCache.put("3", "3");

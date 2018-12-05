@@ -64,7 +64,6 @@ function getAllEntries() returns json {
 }
 
 //Returns all the changed entries of the node catagorized according to node IP.
-//TODO fix extra entry issue
 function getChangedEntries() returns json {
     json entries;
     //Init json according to nodes
@@ -92,7 +91,6 @@ function getChangedEntries() returns json {
                 string newKey = "O:"+value.cacheName + ":" + value.key;
                 CacheEntry newEntry = {cacheName:value.cacheName,value:value.value,key:value.key,lastAccessedTime:value.lastAccessedTime,expiryTimeMillis:value.expiryTimeMillis,replica:false};
                 cacheEntries[newKey]=newEntry;
-                io:println ("Lost original created "+ value.key);
             }
 
         } else {
@@ -114,7 +112,6 @@ function getChangedEntries() returns json {
                 CacheEntry newEntry = { cacheName: value.cacheName, value: value.value, key: value.key, lastAccessedTime
                 : value.lastAccessedTime, expiryTimeMillis: value.expiryTimeMillis, replica: true };
                 cacheEntries[newKey] = newEntry;
-                io:println ("Lost replica created "+ value.key);
             }
         }
     }
@@ -142,7 +139,6 @@ function storeMultipleEntries(json jsonObj) {
         isRelocationOrEvictionRunning = false;
     }
 }
-
 
 function evictEntries() {
     int keyCountToEvict = <int>(cacheCapacity * cacheEvictionFactor);

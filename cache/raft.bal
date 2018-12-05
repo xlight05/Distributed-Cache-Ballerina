@@ -125,7 +125,7 @@ function electLeader() {
     VoteRequest req = { term: currentTerm, candidateID: currentNode, lastLogIndex: (lengthof log) - 1, lastLogTerm: log[(
         lengthof log) - 1].term };
     future<int> voteResp = start sendVoteRequests(untaint req);
-    int voteCount = await voteResp;
+    int voteCount = await voteResp; //TODO sync this
     //check if another appendEntry came while waitting for vote responses
     if (currentTerm != electionTerm) {
         log:printInfo ("Term changed while waitting for vote responses. Returning");
@@ -150,6 +150,7 @@ function electLeader() {
     }
     resetElectionTimer();
     log:printInfo(currentNode + " is a " + state);
+    //TODO revist channels
     true -> raftReadyChan; // signal raft is ready
     return ();
 }
@@ -195,7 +196,7 @@ function sendVoteRequestToSeperateNode(http:Client node, VoteRequest req) {
             VoteResponse result = check <VoteResponse>check payload.getJsonPayload();
             if (result.term > currentTerm) {
                 //target node has higher term. stop election
-                candVoteLog[node.config.url] = -2; // to signal
+                candVoteLog[node.config.url] = -2; // to signal //TODO const
                 return;
                 //stepdown
             }
@@ -231,7 +232,7 @@ function sendHeartbeats() {
     }
     foreach item in heartbeatAsync {
         //wait for heartbeat responses
-        var x = await item;
+        _ = await item;
     }
     //start committing entries
     commitEntry();
@@ -314,7 +315,7 @@ function checkSuspectedNode(SuspectNode node) {
         return;
     }
     http:Client client = getHealthyNode();
-    io:println("Healthy Node :" + client.config.url);
+    log:printInfo("Healthy Node :" + client.config.url);
     raftEndpoint = client;
     json req = { ip: node.client.config.url };
     //change

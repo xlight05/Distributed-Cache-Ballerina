@@ -186,7 +186,6 @@ public type Consistent object {
     # Removes a node from the Hash Ring
     #+nodeKey - Node identifier
     public function removeNode(string nodeKey) {
-        //io:println(members);
         if (!members.hasKey(nodeKey)){
             // There is no member with that name. Quit immediately.
             return;

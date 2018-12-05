@@ -52,7 +52,6 @@ public function initNodeConfig(){
     //Suggestion rest para array suppot for config API
     string hosts = config:getAsString("cache.hosts");
     string[] configNodeList = hosts.split(",");
-    io:println(configNodeList);
     if (configNodeList[0] == "") {
         createCluster();
     } else {
@@ -65,17 +64,58 @@ function createCluster() {
     startRaft();
 }
 
+//# Allows uesrs to join the cluster
+//# + nodesInCfg - ips of the nodes in the cluster
+//public function joinCluster(string[] nodesInCfg) {
+//    //TODO parral
+//    //sends join request to all nodes specified in config
+//    foreach node in nodesInCfg {
+//        http:Client client;
+//        http:ClientEndpointConfig cfg = { url: node };
+//        client.init(cfg);
+//        nodeEndpoint = client;
+//        var serverResponse = nodeEndpoint->post("/raft/server", currentNode);
+//        match serverResponse {
+//            http:Response payload => {
+//                ClientResponse result = check <ClientResponse>check payload.getJsonPayload();
+//                //if node is the leader join the cluster
+//                if (result.sucess) {
+//                    joinRaft();
+//                    return;
+//                } else {
+//                    log:printInfo("No " + node + " is not the leader");
+//                    string[] leaderIP;
+//                    //if node is not the leader it will send last known leader as the hint
+//                    leaderIP[0] = result.leaderHint;
+//                    if (leaderIP[0] == "") {
+//                        continue;
+//                    }
+//                    joinCluster(leaderIP);
+//                }
+//            }
+//            error err => {
+//                log:printInfo("Node didn't Respond");
+//                continue;
+//            }
+//        }
+//    }
+//    //wait few seconds and retry
+//    runtime:sleep(1000);
+//    joinCluster(nodesInCfg);
+//}
+
 # Allows uesrs to join the cluster
 # + nodesInCfg - ips of the nodes in the cluster
 public function joinCluster(string[] nodesInCfg) {
+    //TODO parral
     //sends join request to all nodes specified in config
     foreach node in nodesInCfg {
         http:Client client;
         http:ClientEndpointConfig cfg = { url: node };
         client.init(cfg);
         nodeEndpoint = client;
-        var ee = nodeEndpoint->post("/raft/server", currentNode);
-        match ee {
+        var serverResponse = nodeEndpoint->post("/raft/server", currentNode);
+        match serverResponse {
             http:Response payload => {
                 ClientResponse result = check <ClientResponse>check payload.getJsonPayload();
                 //if node is the leader join the cluster
@@ -84,24 +124,46 @@ public function joinCluster(string[] nodesInCfg) {
                     return;
                 } else {
                     log:printInfo("No " + node + " is not the leader");
-                    string[] leaderIP;
-                    //if node is not the leader it will send last known leader as the hint
-                    leaderIP[0] = result.leaderHint;
-                    if (leaderIP[0] == "") {
-                        continue;
-                    }
-                    joinCluster(leaderIP);
-                    return;
+                    callLeaderHint(result.leaderHint);
                 }
             }
             error err => {
                 log:printInfo("Node didn't Respond");
+                continue;
             }
         }
     }
     //wait few seconds and retry
     runtime:sleep(1000);
     joinCluster(nodesInCfg);
+}
+
+function callLeaderHint (string leaderHint) {
+    http:Client client;
+    http:ClientEndpointConfig cfg = { url: leaderHint };
+    client.init(cfg);
+    nodeEndpoint = client;
+    var serverResponse = nodeEndpoint->post("/raft/server", currentNode);
+    match serverResponse {
+        http:Response payload => {
+            ClientResponse result = check <ClientResponse>check payload.getJsonPayload();
+            //if node is the leader join the cluster
+            if (result.sucess) {
+                joinRaft();
+                return;
+            } else {
+                log:printInfo("No " + leaderHint + " is not the leader");
+                if (result.leaderHint == "") {
+                    return;
+                }
+                callLeaderHint(result.leaderHint);
+            }
+        }
+        error err => {
+            log:printInfo("Node didn't Respond");
+            return;
+        }
+    }
 }
 
 

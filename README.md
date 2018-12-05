@@ -12,7 +12,6 @@
 
 ### Todos
 
-- Refactor code,Documentation
 - Performance analysis
 - Healthcheck feature
 

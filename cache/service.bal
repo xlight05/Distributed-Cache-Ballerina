@@ -4,10 +4,8 @@ import ballerina/http;
 import ballerina/log;
 import ballerina/config;
 
-
 @http:ServiceConfig { basePath: "/cache" }
 service<http:Service> cacheService bind listener {
-
     //Allows users to get cache objects created by other nodes.
     @http:ResourceConfig {
         methods: ["GET"],
