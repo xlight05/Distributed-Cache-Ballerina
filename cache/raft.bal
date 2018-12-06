@@ -14,7 +14,7 @@ endpoint http:Client raftEndpoint {
 string currentNode = config:getAsString("raft.ip") + ":" + config:getAsString("raft.port");
 
 # Contains http clients raft uses
-map<http:Client> raftClientMap;
+map<Node> raftClientMap;
 
 int MIN_ELECTION_TIMEOUT = config:getAsInt("raft.min.election.timeout", default = 2000);
 int MAX_ELECTION_TIMEOUT = config:getAsInt("raft.max.election.timeout", default = 2500);
@@ -143,7 +143,7 @@ function electLeader() {
         leader = currentNode;
         //timer.stop();
         foreach i in raftClientMap {
-            nextIndex[i.config.url] = lengthof log;
+            nextIndex[i.ip] = lengthof log;
         }
         startHeartbeatTimer();
         startProcessingSuspects();
@@ -159,10 +159,10 @@ function sendVoteRequests(VoteRequest req) returns int {
     //votes for itself
     future[] futureVotes;
     foreach node in raftClientMap {
-        if (node.config.url == currentNode) {
+        if (node.ip == currentNode) {
             continue;
         }
-        candVoteLog[node.config.url] = -1;
+        candVoteLog[node.ip] = -1;
         //sends async vote requests
         future asyncRes = start sendVoteRequestToSeperateNode(node, req);
         futureVotes[lengthof futureVotes] = asyncRes;
@@ -188,30 +188,30 @@ function sendVoteRequests(VoteRequest req) returns int {
     return count;
 }
 
-function sendVoteRequestToSeperateNode(http:Client node, VoteRequest req) {
-    raftEndpoint = node;
+function sendVoteRequestToSeperateNode(Node node, VoteRequest req) {
+    raftEndpoint = node.nodeEndpoint;
     var unionResp = raftEndpoint->post("/raft/vote", check <json>req);
     match unionResp {
         http:Response payload => {
             VoteResponse result = check <VoteResponse>check payload.getJsonPayload();
             if (result.term > currentTerm) {
                 //target node has higher term. stop election
-                candVoteLog[node.config.url] = -2; // to signal //TODO const
+                candVoteLog[node.ip] = -2; // to signal //TODO const
                 return;
                 //stepdown
             }
             if (result.granted) {
                 //if vote granted
-                candVoteLog[node.config.url] = 1;
+                candVoteLog[node.ip] = 1;
             }
             else {
-                candVoteLog[node.config.url] = 0;
+                candVoteLog[node.ip] = 0;
             }
 
         }
         error err => {
             log:printError("Voted Request failed: " + err.message + "\n");
-            candVoteLog[node.config.url] = 0;
+            candVoteLog[node.ip] = 0;
         }
     }
 }
@@ -223,7 +223,7 @@ function sendHeartbeats() {
     }
     future[] heartbeatAsync;
     foreach node in raftClientMap {
-        if (node.config.url == currentNode) {
+        if (node.ip == currentNode) {
             continue;
         }
         //sends heartbeats async
@@ -238,11 +238,11 @@ function sendHeartbeats() {
     commitEntry();
 }
 
-function heartbeatChannel(http:Client node) {
+function heartbeatChannel(Node node) {
     if (state != "Leader") {
         return;
     }
-    string peer = node.config.url;
+    string peer = node.ip;
     int nextIndexOfPeer = nextIndex[peer] ?: 0; //Next index to be sent to the peer
     int prevLogIndex = nextIndexOfPeer - 1; //Last Index that needs to be sent to their peer
     int prevLogTerm = 0;
@@ -261,7 +261,7 @@ function heartbeatChannel(http:Client node) {
         entries: entryList,
         leaderCommit: commitIndex
     };
-    raftEndpoint = node;
+    raftEndpoint = untaint node.nodeEndpoint;
     var heartbeatResp = raftEndpoint->post("/raft/append", check <json>untaint appendEntry);
     match heartbeatResp {
         http:Response payload => {
@@ -281,19 +281,19 @@ function heartbeatChannel(http:Client node) {
             boolean found = false;
             //check if already a suspect
             foreach suspect in suspectNodes {
-                if (suspect.ip == node.config.url) {
+                if (suspect.ip == node.ip) {
                     found = true;
                 }
             }
             if (!found) {
                 http:Client client;
-                http:ClientEndpointConfig cc = { url: node.config.url, timeoutMillis: 60000 };
+                http:ClientEndpointConfig cc = { url: node.ip, timeoutMillis: 60000 };
                 client.init(cc);
-                SuspectNode sNode = { ip: node.config.url, client: client, suspectRate: 0 };
-                suspectNodes[node.config.url] = sNode;
-                boolean commited = clientRequest("NSA " + node.config.url); //commit node as suspected
+                SuspectNode sNode = { ip: node.ip, client: client, suspectRate: 0 };
+                suspectNodes[node.ip] = sNode;
+                boolean commited = clientRequest("NSA " + node.ip); //commit node as suspected
                 // cant commit here, if doesnt hv majority wut to do
-                log:printInfo(node.config.url + " added to suspect list");
+                log:printInfo(node.ip + " added to suspect list");
                 //commited?
             }
         }
@@ -314,10 +314,10 @@ function checkSuspectedNode(SuspectNode node) {
     if (state != "Leader") {
         return;
     }
-    http:Client client = getHealthyNode();
-    log:printInfo("Healthy Node :" + client.config.url);
-    raftEndpoint = client;
-    json req = { ip: node.client.config.url };
+    Node client = getHealthyNode();
+    log:printInfo("Healthy Node :" + client.ip);
+    raftEndpoint = client.nodeEndpoint;
+    json req = { ip: node.ip };
     //change
     //increase timeout
     var resp = raftEndpoint->post("/raft/indirect/", req);
@@ -335,8 +335,8 @@ function checkSuspectedNode(SuspectNode node) {
                             node.suspectRate = node.suspectRate - SUSPECT_VALUE;
                             if (node.suspectRate <= -50) {
                                 //commit remove from suspect
-                                boolean commited = clientRequest("NSR " + node.client.config.url);
-                                log:printInfo(node.client.config.url + " Recovred from suspection " + commited);
+                                boolean commited = clientRequest("NSR " + node.ip);
+                                log:printInfo(node.ip + " Recovred from suspection " + commited);
                                 //??commited
                                 return;
                             }
@@ -346,8 +346,8 @@ function checkSuspectedNode(SuspectNode node) {
                         node.suspectRate = node.suspectRate + SUSPECT_VALUE;
                         if (node.suspectRate >= 100) {
                             //commit dead
-                            boolean commited = clientRequest("NR " + node.client.config.url);
-                            log:printInfo(node.client.config.url + " Removed from the cluster");
+                            boolean commited = clientRequest("NR " + node.ip);
+                            log:printInfo(node.ip + " Removed from the cluster");
                             return;
                         }
                     }
@@ -368,8 +368,8 @@ function checkSuspectedNode(SuspectNode node) {
             node.suspectRate = node.suspectRate + SUSPECT_VALUE;
             if (node.suspectRate >= 100) {
                 //commit dead
-                boolean commited = clientRequest("NR " + node.client.config.url);
-                log:printInfo(node.client.config.url + " Removed from the cluster");
+                boolean commited = clientRequest("NR " + node.ip);
+                log:printInfo(node.ip + " Removed from the cluster");
                 return;
             }
             //
@@ -381,30 +381,30 @@ function checkSuspectedNode(SuspectNode node) {
 
 # Gives a healthy ndoe in the cluster for indirect RPCs
 # +return - Retruns a healthy node or current node if no other healthy nodes available
-function getHealthyNode() returns http:Client {
-    http:Client client;
+function getHealthyNode() returns Node {
+    Node healthyNode;
     foreach i in raftClientMap {
         //skip current node first
-        if (i.config.url == currentNode) {
+        if (i.ip == currentNode) {
             continue;
         }
         boolean inSuspect = false;
         foreach j in suspectNodes {
-            if (i.config.url == j.ip) {
+            if (i.ip == j.ip) {
                 inSuspect = true;
             }
         }
         if (!inSuspect) {
-            client = i;
+            healthyNode = i;
         }
     }
     //if none return current Node
     foreach i in raftClientMap {
-        if (i.config.url == currentNode) {
-            client = i;
+        if (i.ip == currentNode) {
+            healthyNode = i;
         }
     }
-    return client;
+    return healthyNode;
 }
 
 # Commits entries of leaders log
@@ -416,10 +416,10 @@ function commitEntry() {
     while (item > commitIndex) {
         int replicatedCount = 1; //replicated node count
         foreach server in raftClientMap {
-            if (server.config.url == currentNode) {
+            if (server.ip == currentNode) {
                 continue;
             }
-            if (matchIndex[server.config.url] == item) {
+            if (matchIndex[server.ip] == item) {
                 replicatedCount = replicatedCount + 1;
             }
         }
@@ -519,7 +519,7 @@ function addNode(string ip) returns ClientResponse {
         return { sucess: false, leaderHint: leader };
     } else {
         foreach item in raftClientMap { // temp. check heartbeat commiting agian
-            if (item.config.url == ip) {
+            if (item.ip == ip) {
                 return { sucess: false, leaderHint: leader };
             }
         }
@@ -535,7 +535,7 @@ function apply(string command) {
     if (command.substring(0, 2) == "NA") { //NODE ADD
         string ip = command.split(" ")[1];
         foreach item in raftClientMap { // temp. check heartbeat commiting agian
-            if (item.config.url == ip) {
+            if (item.ip == ip) {
                 return;
             }
         }
@@ -551,7 +551,8 @@ function apply(string command) {
             }
         };
         raftClient.init(cc);
-        raftClientMap[ip] = raftClient;
+        Node raftNode = {ip:ip,nodeEndpoint:raftClient};
+        raftClientMap[ip] = raftNode;
 
         http:Client cacheClient;
         http:ClientEndpointConfig cacheClientCfg = {
@@ -565,7 +566,8 @@ function apply(string command) {
             }
         };
         cacheClient.init(cacheClientCfg);
-        cacheClientMap[ip]=cacheClient;
+        Node cacheNode = {ip:ip,nodeEndpoint:cacheClient};
+        cacheClientMap[ip]=cacheNode;
 
         http:Client relocationClient;
         http:ClientEndpointConfig relocationConfig = {
@@ -573,7 +575,8 @@ function apply(string command) {
             timeoutMillis: config:getAsInt("cache.relocation.timeout", default = 10000)
         };
         relocationClient.init(relocationConfig);
-        relocationClientMap[ip] = relocationClient;
+        Node relocationNode = {ip:ip,nodeEndpoint:relocationClient};
+        relocationClientMap[ip] = relocationNode;
 
 
         nextIndex[ip] = 1;
@@ -618,7 +621,7 @@ function apply(string command) {
 function printClientNodes() {
     io:println("Client map list");
     foreach i in raftClientMap {
-        io:println(i.config.url);
+        io:println(i.ip);
     }
 }
 

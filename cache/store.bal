@@ -68,7 +68,7 @@ function getChangedEntries() returns json {
     json entries;
     //Init json according to nodes
     foreach node in cacheClientMap {
-        entries[node.config.url] = [];
+        entries[node.ip] = [];
     }
     isRelocationOrEvictionRunning = true;
     foreach key, value in cacheEntries {
@@ -158,7 +158,7 @@ function evictEntries() {
     json entries;
     //Node catagorize
     foreach node in cacheClientMap{
-            entries[node.config.url] = [];
+            entries[node.ip] = [];
     }
     foreach c in cacheKeysToBeRemoved {
         string plainKey = c.split(":")[2];
@@ -177,19 +177,19 @@ function evictEntries() {
 
 function evictReplicas(json entries) {
     foreach nodeItem in cacheClientMap {
-        if (lengthof entries[nodeItem.config.url]== 0){
+        if (lengthof entries[nodeItem.ip]== 0){
             //if not replicas evicted no need to send the request
             continue;
         }
-        nodeEndpoint = nodeItem;
-        var res = nodeEndpoint->delete("/cache/entries", untaint entries[nodeItem.config.url]);
+        nodeEndpoint = nodeItem.nodeEndpoint;
+        var res = nodeEndpoint->delete("/cache/entries", untaint entries[nodeItem.ip]);
         //sends changed entries to correct node
         match res {
             http:Response resp => {
                 var msg = resp.getJsonPayload();
                 match msg {
                     json jsonPayload => {
-                        log:printInfo("Entries sent to " + nodeItem.config.url);
+                        log:printInfo("Entries sent to " + nodeItem.ip);
                     }
                     error err => {
                         log:printError(err.message, err = err);
@@ -240,7 +240,7 @@ function checkAndAddEntries(int numberOfKeysToEvict, string[] cacheKeys, int[] t
 function cacheExpiry() {
     json entries;
     foreach node in cacheClientMap{
-            entries[node.config.url] = [];
+            entries[node.ip] = [];
     }
     foreach key, value in cacheEntries {
         int currentSystemTime = time:currentTime().time;
@@ -266,10 +266,10 @@ function createCacheCleanupTask() returns task:Timer {
 function removeReplicas(string key, string originalNode) {
     string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
     foreach node in replicaNodes {
-        http:Client? replicaNode = cacheClientMap[node];
+        Node? replicaNode = cacheClientMap[node];
         match replicaNode {
-            http:Client replica => {
-                nodeEndpoint = replica;
+            Node replica => {
+                nodeEndpoint = replica.nodeEndpoint;
                 json entryJSON = { "key": key };
                 var response = nodeEndpoint->delete("/cache/entries"+key, entryJSON);
                 match response {
@@ -301,8 +301,8 @@ function relocateData() {
     lock{
         json changedJson = getChangedEntries();
         foreach nodeItem in relocationClientMap {
-            string nodeIP = nodeItem.config.url;
-            nodeEndpoint = nodeItem;
+            string nodeIP = nodeItem.ip;
+            nodeEndpoint = nodeItem.nodeEndpoint;
             log:printInfo("Relocating data");
             var res = nodeEndpoint->post("/cache/entries", untaint changedJson[nodeIP]);
             //sends changed entries to correct node

@@ -13,11 +13,11 @@ endpoint http:Client nodeEndpoint {
 };
 
 # Represents a node in the cluster
-# + id - Node ID
 # + ip - IP of the node
+# + nodeEndpoint - Http client of the node
 type Node record {
-    string id;
     string ip;
+    http:Client nodeEndpoint;
 };
 
 # Represents a cache entry.
@@ -45,8 +45,8 @@ float cacheEvictionFactor = config:getAsFloat("cache.eviction.factor", default =
 int cacheCapacity = config:getAsInt("cache.capacity", default = 100000);
 boolean isLocalCacheEnabled = config:getAsBoolean("cache.local.cache", default = false);
 boolean isRelocationOrEvictionRunning = false;
-map <http:Client> cacheClientMap;
-map <http:Client> relocationClientMap;
+map <Node> cacheClientMap;
+map <Node> relocationClientMap;
 
 public function initNodeConfig(){
     //Suggestion rest para array suppot for config API
@@ -124,7 +124,10 @@ public function joinCluster(string[] nodesInCfg) {
                     return;
                 } else {
                     log:printInfo("No " + node + " is not the leader");
-                    callLeaderHint(result.leaderHint);
+                    if (result.leaderHint != ""){
+                        callLeaderHint(result.leaderHint);
+                    }
+
                 }
             }
             error err => {
@@ -179,7 +182,7 @@ public function createCache(string name) {
 # + return - Cache object associated with the given name
 public function getCache(string name) returns Cache? {
     foreach node in cacheClientMap {
-        nodeEndpoint = node;
+        nodeEndpoint = node.nodeEndpoint;
         //changing the url of client endpoint
         var response = nodeEndpoint->get("/cache/" + name);
         match response {
@@ -194,7 +197,7 @@ public function getCache(string name) returns Cache? {
                             //store object locally
                             return cacheObj;
                         } else {
-                            log:printWarn(name + " Cache not found- in " + node.config.url);
+                            log:printWarn(name + " Cache not found- in " + node.ip);
                         }
                     }
                     error err => {
@@ -263,10 +266,10 @@ public type Cache object {
         CacheEntry entry = { value: value, key: key, lastAccessedTime: currentTime, createdTime: currentTime, cacheName:
         self.name, replica: false, expiryTimeMillis: self.expiryTimeMillis };
         json entryJSON = check <json>entry;
-        http:Client? clientNode = cacheClientMap[originalEntryNode];
+        Node? clientNode = cacheClientMap[originalEntryNode];
         match clientNode {
-            http:Client client => {
-                nodeEndpoint = client;
+            Node client => {
+                nodeEndpoint = client.nodeEndpoint;
                 var res = nodeEndpoint->post("/cache/entries/"+key, entryJSON);
                 match res {
                     http:Response resp => {
@@ -372,10 +375,10 @@ public type Cache object {
         }
         string nodeIP = hashRing.get(key);
         json entryJSON = { "key": key };
-        http:Client? clientNode = cacheClientMap[nodeIP];
+        Node? clientNode = cacheClientMap[nodeIP];
         match clientNode {
-            http:Client client => {
-                nodeEndpoint = client;
+            Node client => {
+                nodeEndpoint = client.nodeEndpoint;
                 var res = nodeEndpoint->delete("/cache/entries"+key, entryJSON);
                 match res {
                     http:Response resp => {
@@ -409,10 +412,10 @@ function putEntriesInToReplicas(json entryJSON, string key, string originalTarge
     //gets replica nodes
     string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
     foreach node in replicaNodes {
-        http:Client? replicaNode = cacheClientMap[node];
+        Node? replicaNode = cacheClientMap[node];
         match replicaNode {
-            http:Client replica => {
-                nodeEndpoint = replica;
+            Node replica => {
+                nodeEndpoint = replica.nodeEndpoint;
                 var response = nodeEndpoint->post("/cache/entries"+key, entryJSON);
                 match response {
                     http:Response resp => {
@@ -455,10 +458,10 @@ function updateLastAccessedTime(string key) {
 # + key - key of cache entry
 # + return - entry if request succeed, error if failed
 function getEntryFromServer(string ip, string key) returns json|error {
-    http:Client? replicaNode = cacheClientMap[ip];
+    Node? replicaNode = cacheClientMap[ip];
     match replicaNode {
-        http:Client replica => {
-            nodeEndpoint = replica;
+        Node replica => {
+            nodeEndpoint = replica.nodeEndpoint;
             var res = nodeEndpoint->get("/cache/entries/" + key);
             match res {
                 http:Response resp => {

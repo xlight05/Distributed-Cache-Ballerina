@@ -141,9 +141,11 @@ service<http:Service> raft bind listener {
     indirectRPC(endpoint client, http:Request request) {
         json reqq = check request.getJsonPayload();
         string targetIP = check <string>reqq.ip;
+        Node targetNode;
         foreach i in raftClientMap {
-            if (i.config.url == targetIP) {
-                raftEndpoint = i;
+            if (i.ip == targetIP) {
+                raftEndpoint = i.nodeEndpoint;
+                targetNode = i;
                 break;
             }
         }
@@ -164,7 +166,7 @@ service<http:Service> raft bind listener {
                 responsePayload = { "status": false, "relocate": false };
             }
         }
-        log:printInfo("Indirect ping for " + raftEndpoint.config.url + " Server Status : " + responsePayload["status"].
+        log:printInfo("Indirect ping for " + targetNode.ip + " Server Status : " + responsePayload["status"].
                 toString());
         http:Response response;
         response.setJsonPayload(responsePayload);
