@@ -7,11 +7,10 @@ import ballerina/log;
 import ballerina/config;
 import ballerina/http;
 
-endpoint http:Client raftEndpoint {
-    url: "http://localhost:3000"
-};
 # Current node IP
 string currentNode = config:getAsString("raft.ip") + ":" + config:getAsString("raft.port");
+
+http:Client raftEndpoint = new (currentNode);
 
 # Contains http clients raft uses
 map<Node> raftClientMap;
@@ -61,11 +60,11 @@ map<int> matchIndex;
 channel<boolean> raftReadyChan;
 
 # Suspect node
-# +client - Http client of the suspected node
+# +clientEndpoint - Http client of the suspected node
 # +ip - ip of the client node
 # +suspectRate - Suspect rate of the node. -50 = Recovered , 100 = Dead
 type SuspectNode record {
-    http:Client client;
+    http:Client clientEndpoint;
     string ip;
     int suspectRate;
 };
@@ -95,7 +94,7 @@ public function startRaft() {
     electionTimer.start();
 
     boolean ready;
-    ready <- raftReadyChan; //signals raft is ready
+    ready =<- raftReadyChan; //signals raft is ready
 }
 
 public function joinRaft() {
@@ -108,7 +107,7 @@ public function joinRaft() {
         interval, delay = interval);
     electionTimer.start();
     boolean ready;
-    ready <- raftReadyChan; //signals raft is ready
+    ready =<- raftReadyChan; //signals raft is ready
 }
 
 function electLeader() {
@@ -125,7 +124,7 @@ function electLeader() {
     VoteRequest req = { term: currentTerm, candidateID: currentNode, lastLogIndex: (lengthof log) - 1, lastLogTerm: log[(
         lengthof log) - 1].term };
     future<int> voteResp = start sendVoteRequests(untaint req);
-    int voteCount = await voteResp; //TODO sync this
+    int voteCount = wait voteResp; //TODO sync this
     //check if another appendEntry came while waitting for vote responses
     if (currentTerm != electionTerm) {
         log:printInfo ("Term changed while waitting for vote responses. Returning");
@@ -142,7 +141,7 @@ function electLeader() {
         state = "Leader";
         leader = currentNode;
         //timer.stop();
-        foreach i in raftClientMap {
+        foreach var i in raftClientMap {
             nextIndex[i.ip] = lengthof log;
         }
         startHeartbeatTimer();
@@ -157,23 +156,23 @@ function electLeader() {
 
 function sendVoteRequests(VoteRequest req) returns int {
     //votes for itself
-    future[] futureVotes;
-    foreach node in raftClientMap {
+    future<()>[] futureVotes;
+    foreach var node in raftClientMap {
         if (node.ip == currentNode) {
             continue;
         }
         candVoteLog[node.ip] = -1;
         //sends async vote requests
-        future asyncRes = start sendVoteRequestToSeperateNode(node, req);
+        future<()> asyncRes = start sendVoteRequestToSeperateNode(node, req);
         futureVotes[lengthof futureVotes] = asyncRes;
         //ignore current Node
     }
-    foreach i in futureVotes { //change this in to quoram
+    foreach var i in futureVotes { //change this in to quoram
         //waits for vote requests
-        _ = await i;
+        _ = wait i;
     }
     int count = 1;
-    foreach item in candVoteLog {
+    foreach var item in candVoteLog {
         if (item == 1) {
             //increment votes
             count = count + 1;
@@ -189,30 +188,25 @@ function sendVoteRequests(VoteRequest req) returns int {
 }
 
 function sendVoteRequestToSeperateNode(Node node, VoteRequest req) {
-    raftEndpoint = node.nodeEndpoint;
-    var unionResp = raftEndpoint->post("/raft/vote", check <json>req);
-    match unionResp {
-        http:Response payload => {
-            VoteResponse result = check <VoteResponse>check payload.getJsonPayload();
-            if (result.term > currentTerm) {
-                //target node has higher term. stop election
-                candVoteLog[node.ip] = -2; // to signal //TODO const
-                return;
-                //stepdown
-            }
-            if (result.granted) {
-                //if vote granted
-                candVoteLog[node.ip] = 1;
-            }
-            else {
-                candVoteLog[node.ip] = 0;
-            }
-
+    var unionResp = node.nodeEndpoint->post("/raft/vote", check <json>req);
+    if (unionResp is http:Response){
+        VoteResponse result = check <VoteResponse>check payload.getJsonPayload();
+        if (result.term > currentTerm) {
+            //target node has higher term. stop election
+            candVoteLog[node.ip] = -2; // to signal //TODO const
+            return;
+            //stepdown
         }
-        error err => {
-            log:printError("Voted Request failed: " + err.message + "\n");
+        if (result.granted) {
+            //if vote granted
+            candVoteLog[node.ip] = 1;
+        }
+        else {
             candVoteLog[node.ip] = 0;
         }
+    }else {
+            log:printError("Voted Request failed: " + unionResp + "\n");
+            candVoteLog[node.ip] = 0;
     }
 }
 
@@ -221,18 +215,18 @@ function sendHeartbeats() {
     if (state != "Leader") {
         return;
     }
-    future[] heartbeatAsync;
-    foreach node in raftClientMap {
+    future <()> [] heartbeatAsync;
+    foreach var node in raftClientMap {
         if (node.ip == currentNode) {
             continue;
         }
         //sends heartbeats async
-        future asy = start heartbeatChannel(node);
+        future<()> asy = start heartbeatChannel(node);
         heartbeatAsync[lengthof heartbeatAsync] = asy;
     }
-    foreach item in heartbeatAsync {
+    foreach var item in heartbeatAsync {
         //wait for heartbeat responses
-        _ = await item;
+        _ = wait item;
     }
     //start committing entries
     commitEntry();
@@ -250,7 +244,7 @@ function heartbeatChannel(Node node) {
         prevLogTerm = log[prevLogIndex].term; //last term that needs to be sent to their peer
     }
     LogEntry[] entryList;
-    foreach i in prevLogIndex...lengthof log - 1 {
+    foreach var i in prevLogIndex...lengthof log - 1 {
         entryList[lengthof entryList] = log[i]; //non replicated entry list empty in a healthy heartbeat
     }
     AppendEntries appendEntry = {
@@ -261,48 +255,43 @@ function heartbeatChannel(Node node) {
         entries: entryList,
         leaderCommit: commitIndex
     };
-    raftEndpoint = untaint node.nodeEndpoint;
-    var heartbeatResp = raftEndpoint->post("/raft/append", check <json>untaint appendEntry);
-    match heartbeatResp {
-        http:Response payload => {
-            AppendEntriesResponse result = check <AppendEntriesResponse>check payload.getJsonPayload();
-            if (result.sucess) { //if node's log is on par with leaders log
-                matchIndex[peer] = result.followerMatchIndex;
-                nextIndex[peer] = result.followerMatchIndex + 1; //atomicc
-            } else {//if node log is behind with leaders log
-                nextIndex[peer] = max(1, nextIndexOfPeer - 1);
-                log:printInfo("Catching up the node with leader");
-                heartbeatChannel(node);
+    var heartbeatResp = node.nodeEndpoint->post("/raft/append", check <json>untaint appendEntry);
+    if (heartbeatResp is http:Response){
+        AppendEntriesResponse result = check <AppendEntriesResponse>check payload.getJsonPayload();
+        if (result.sucess) { //if node's log is on par with leaders log
+            matchIndex[peer] = result.followerMatchIndex;
+            nextIndex[peer] = result.followerMatchIndex + 1; //atomicc
+        } else {//if node log is behind with leaders log
+            nextIndex[peer] = max(1, nextIndexOfPeer - 1);
+            log:printInfo("Catching up the node with leader");
+            heartbeatChannel(node);
+        }
+    }else {
+        log:printError("Heartbeat failed: " + heartbeatResp + "\n");
+        //begin to suspect
+        boolean found = false;
+        //check if already a suspect
+        foreach var suspect in suspectNodes {
+            if (suspect.ip == node.ip) {
+                found = true;
             }
         }
-        error err => {
-            log:printError("Heartbeat failed: " + err.message + "\n");
-            //begin to suspect
-            boolean found = false;
-            //check if already a suspect
-            foreach suspect in suspectNodes {
-                if (suspect.ip == node.ip) {
-                    found = true;
-                }
-            }
-            if (!found) {
-                http:Client client;
-                http:ClientEndpointConfig cc = { url: node.ip, timeoutMillis: 60000 };
-                client.init(cc);
-                SuspectNode sNode = { ip: node.ip, client: client, suspectRate: 0 };
-                suspectNodes[node.ip] = sNode;
-                boolean commited = clientRequest("NSA " + node.ip); //commit node as suspected
-                // cant commit here, if doesnt hv majority wut to do
-                log:printInfo(node.ip + " added to suspect list");
-                //commited?
-            }
+        if (!found) {
+            http:ClientEndpointConfig cc = {timeoutMillis: 60000 };
+            http:Client newClient= (node.ip,config:cc);
+            SuspectNode sNode = { ip: node.ip, clientEndpoint: newClient, suspectRate: 0 };
+            suspectNodes[node.ip] = sNode;
+            boolean commited = clientRequest("NSA " + node.ip); //commit node as suspected
+            // cant commit here, if doesnt hv majority wut to do
+            log:printInfo(node.ip + " added to suspect list");
+            //commited?
         }
     }
 }
 
 # Starts processing existing suspects once a new leader is elected
 function startProcessingSuspects() {
-    foreach suspect in suspectNodes {
+    foreach var suspect in suspectNodes {
         _ = start checkSuspectedNode(suspect);
     }
 }
@@ -314,22 +303,19 @@ function checkSuspectedNode(SuspectNode node) {
     if (state != "Leader") {
         return;
     }
-    Node client = getHealthyNode();
-    log:printInfo("Healthy Node :" + client.ip);
-    raftEndpoint = client.nodeEndpoint;
+    Node healthyNode = getHealthyNode();
+    log:printInfo("Healthy Node :" + healthyNode.ip);
     json req = { ip: node.ip };
     //change
     //increase timeout
-    var resp = raftEndpoint->post("/raft/indirect/", req);
-    match resp {
-        http:Response payload => {
-            json|error result = payload.getJsonPayload();
-            match result {
-                json j => {
+    var resp = healthyNode.nodeEndpoint->post("/raft/indirect/", req);
+    if (resp is http:Response){
+        var jsonPayload = resp.getJsonPayload;
+        if (jsonPayload is json){
                     log:printInfo("Suspect rate of " + node.ip + " : " + node.suspectRate);
-                    boolean status = check <boolean>j.status;
+                    boolean status = check <boolean>jsonPayload.status;
                     if (status) {
-                        boolean relocate = check <boolean>j.relocate;
+                        boolean relocate = check <boolean>jsonPayload.relocate;
                         if (!relocate) {
                             //not relocating just slow lol or up noww !
                             node.suspectRate = node.suspectRate - SUSPECT_VALUE;
@@ -353,16 +339,12 @@ function checkSuspectedNode(SuspectNode node) {
                     }
                     runtime:sleep(FAILURE_TIMEOUT_MILS);
                     checkSuspectedNode(node);
-                }
-                error e => {
-                    log:printError("Error from Connector: " + e.message + "\n");
-                }
-            }
-
+        } else {
+            log:printError("Error from Connector: " + jsonPayload + "\n");
         }
-        error err => {
+    }else {
             //if healthy node didnt respond //could be  be coz of packet loss
-            log:printError("Healthy Node didn't respond: " + err.message + "\n");
+            log:printError("Healthy Node didn't respond: " + resp + "\n");
             //this codeblock should be removed after increasing timeouts. for now since both timeouts in current n healthy nodes r same failed request will timeout
             //
             node.suspectRate = node.suspectRate + SUSPECT_VALUE;
@@ -375,7 +357,6 @@ function checkSuspectedNode(SuspectNode node) {
             //
             runtime:sleep(FAILURE_TIMEOUT_MILS);
             checkSuspectedNode(node);
-        }
     }
 }
 
@@ -383,13 +364,13 @@ function checkSuspectedNode(SuspectNode node) {
 # +return - Retruns a healthy node or current node if no other healthy nodes available
 function getHealthyNode() returns Node {
     Node healthyNode;
-    foreach i in raftClientMap {
+    foreach var i in raftClientMap {
         //skip current node first
         if (i.ip == currentNode) {
             continue;
         }
         boolean inSuspect = false;
-        foreach j in suspectNodes {
+        foreach var j in suspectNodes {
             if (i.ip == j.ip) {
                 inSuspect = true;
             }
@@ -399,7 +380,7 @@ function getHealthyNode() returns Node {
         }
     }
     //if none return current Node
-    foreach i in raftClientMap {
+    foreach var i in raftClientMap {
         if (i.ip == currentNode) {
             healthyNode = i;
         }
@@ -415,7 +396,7 @@ function commitEntry() {
     int item = lengthof log - 1;
     while (item > commitIndex) {
         int replicatedCount = 1; //replicated node count
-        foreach server in raftClientMap {
+        foreach var server in raftClientMap {
             if (server.ip == currentNode) {
                 continue;
             }
@@ -497,8 +478,8 @@ function clientRequest(string command) returns boolean {
     if (state == "Leader") {
         int entryIndex = lengthof log;
         log[entryIndex] = { term: currentTerm, command: command };
-        future ee = start sendHeartbeats();
-        _ = await ee;
+        future<()> ee = start sendHeartbeats();
+        _ = wait ee;
         //without majority no nop :S
         //check if commited
         if (commitIndex >= entryIndex) {
@@ -518,7 +499,7 @@ function addNode(string ip) returns ClientResponse {
     if (state != "Leader") {
         return { sucess: false, leaderHint: leader };
     } else {
-        foreach item in raftClientMap { // temp. check heartbeat commiting agian
+        foreach var item in raftClientMap { // temp. check heartbeat commiting agian
             if (item.ip == ip) {
                 return { sucess: false, leaderHint: leader };
             }
@@ -534,12 +515,11 @@ function addNode(string ip) returns ClientResponse {
 function apply(string command) {
     if (command.substring(0, 2) == "NA") { //NODE ADD
         string ip = command.split(" ")[1];
-        foreach item in raftClientMap { // temp. check heartbeat commiting agian
+        foreach var item in raftClientMap { // temp. check heartbeat commiting agian
             if (item.ip == ip) {
                 return;
             }
         }
-        http:Client raftClient;
         http:ClientEndpointConfig cc = {
             url: ip,
             timeoutMillis: MIN_ELECTION_TIMEOUT / 3,
@@ -550,11 +530,10 @@ function apply(string command) {
                 maxWaitInterval: HEARTBEAT_TIMEOUT / 3
             }
         };
-        raftClient.init(cc);
+        http:Client raftClient= new (ip,config=cc);
         Node raftNode = {ip:ip,nodeEndpoint:raftClient};
         raftClientMap[ip] = raftNode;
 
-        http:Client cacheClient;
         http:ClientEndpointConfig cacheClientCfg = {
             url: ip,
             timeoutMillis: config:getAsInt("cache.request.timeout", default = 2000),
@@ -565,19 +544,17 @@ function apply(string command) {
                 maxWaitInterval: 5000
             }
         };
-        cacheClient.init(cacheClientCfg);
+        http:Client cacheClient =new (ip,config=cacheClientCfg);
         Node cacheNode = {ip:ip,nodeEndpoint:cacheClient};
         cacheClientMap[ip]=cacheNode;
 
-        http:Client relocationClient;
         http:ClientEndpointConfig relocationConfig = {
             url: ip,
             timeoutMillis: config:getAsInt("cache.relocation.timeout", default = 10000)
         };
-        relocationClient.init(relocationConfig);
+        http:Client relocationClient = new (ip,config=relocationConfig);
         Node relocationNode = {ip:ip,nodeEndpoint:relocationClient};
         relocationClientMap[ip] = relocationNode;
-
 
         nextIndex[ip] = 1;
         matchIndex[ip] = 0;
@@ -586,10 +563,9 @@ function apply(string command) {
 
     if (command.substring(0, 3) == "NSA") { //NODE SUSPECT Add
         string ip = command.split(" ")[1];
-        http:Client client;
         http:ClientEndpointConfig cc = { url: ip, timeoutMillis: 60000 };
-        client.init(cc);
-        SuspectNode node = { ip: ip, client: client, suspectRate: 0 };
+        http:Client suspectClient = new (ip,config=cc);
+        SuspectNode node = { ip: ip, clientEndpoint: suspectClient, suspectRate: 0 };
         suspectNodes[ip] = node;
         _ = start checkSuspectedNode(node);
         printSuspectedNodes();
@@ -620,7 +596,7 @@ function apply(string command) {
 # Debug only
 function printClientNodes() {
     io:println("Client map list");
-    foreach i in raftClientMap {
+    foreach var i in raftClientMap {
         io:println(i.ip);
     }
 }
@@ -629,7 +605,7 @@ function printClientNodes() {
 # Debug only
 function printSuspectedNodes() {
     io:println("Suspected node list");
-    foreach i in suspectNodes {
+    foreach var i in suspectNodes {
         io:println(i.ip);
     }
 }
