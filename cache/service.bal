@@ -4,26 +4,30 @@ import ballerina/http;
 import ballerina/log;
 import ballerina/config;
 
+//listener http:Listener raftListner = new(config:getAsInt("raft.port", default = 7000));
+
 @http:ServiceConfig { basePath: "/cache" }
-service<http:Service> cacheService bind listener {
+service cacheService on cacheListner {
     //Allows users to get cache objects created by other nodes.
     @http:ResourceConfig {
         methods: ["GET"],
         path: "/{key}"
     }
-    cacheGet(endpoint caller, http:Request req, string key) {
-        http:Response res = new;
-        json resp;
-        if (cacheMap.hasKey(key)) {
-            resp = check <json>cacheMap[key];
-        }
-        else {
-            res.statusCode = 204;
+    resource function cacheGet(http:Caller caller, http:Request req, string key) {
+        http:Response response = new;
+        json resp={};
+        Cache? entry = cacheMap[key];
+        if (entry is Cache){
+            resp = {name:entry.name,expiryTimeMillis:entry.expiryTimeMillis,LocalCacheConfig:entry.nearCache.getLocalCacheConfig ()};
+        }else {
+            response.statusCode = 204;
             resp = { "message": "Cache not found" };
         }
-        res.setJsonPayload(untaint resp, contentType = "application/json");
-        caller->respond(res) but { error e => log:printError(
-                                                  "Error sending response", err = e) };
+        response.setJsonPayload(untaint resp, contentType = "application/json");
+        var result =caller->respond(response);
+        if (result is error){
+            log:printError("Error sending response", err = result);
+        }
     }
 
     //List all entries in the node
@@ -31,12 +35,14 @@ service<http:Service> cacheService bind listener {
         methods: ["GET"],
         path: "/entries"
     }
-    storelist(endpoint caller, http:Request req) {
+    resource function storelist(http:Caller caller, http:Request req) {
         http:Response res = new;
         json payload = getAllEntries();
         res.setJsonPayload(untaint payload, contentType = "application/json");
-        caller->respond(res) but { error e => log:printError(
-                                                  "Error sending response", err = e) };
+        var result =caller->respond(res);
+        if (result is error){
+            log:printError("Error sending response", err = result);
+        }
     }
 
     //Allows users to retrive data from a given key
@@ -44,22 +50,24 @@ service<http:Service> cacheService bind listener {
         methods: ["GET"],
         path: "/entries/{key}"
     }
-    get(endpoint caller, http:Request req, string key) {
-        json? entryRes = getCacheEntry(key);
+    resource function get(http:Caller caller, http:Request req, string key) {
+        CacheEntry? entry = getCacheEntry(untaint key);
         http:Response res = new;
-        json resp;
-        match entryRes { //TODO recheck
-            () => {
-                res.statusCode = 204;
-                resp = { "message": "Entry not found"};
+        json resp={};
+        if (entry is CacheEntry){
+            json|error responseJSON = json.convert(entry);
+            if (responseJSON is json){
+                resp = responseJSON;
             }
-            json entry => {
-                resp = entry;
-            }
+        }else {//TODO Revisit
+            res.statusCode = 204;
+            resp = { "message": "Entry not found"};
         }
         res.setJsonPayload(untaint resp, contentType = "application/json");
-        caller->respond(res) but { error e => log:printError(
-                                                  "Error sending response", err = e) };
+        var result =caller->respond(res);
+        if (result is error){
+            log:printError("Error sending response", err = result);
+        }
     }
 
     //Allows users to store data in the node.
@@ -67,24 +75,23 @@ service<http:Service> cacheService bind listener {
         methods: ["POST"],
         path: "/entries/{key}"
     }
-    store(endpoint caller, http:Request req) {
+    resource function store(http:Caller caller, http:Request req) {
         http:Response res = new;
-        json|error obj = req.getJsonPayload();
+        CacheEntry|error obj = CacheEntry.convert(req.getJsonPayload());
         json resp;
-        match obj {
-            json jsonObj => {
-                string key = setCacheEntry(jsonObj);
-                resp = { "message": "Entry Added","key":key};
-            }
-            error err => {
-                res.statusCode = 400;
-                resp = { "message": "Invalid JSON"};
-                log:printError("Error recieving response", err = err);
-            }
+        if (obj is CacheEntry){
+            string key = setCacheEntry(obj);
+            resp = { "message": "Entry Added","key":key};
+        }else {
+            res.statusCode = 400;
+            resp = { "message": "Invalid JSON"};
+            log:printError("Error recieving response", err = obj);
         }
         res.setJsonPayload(untaint resp);
-        caller->respond(res) but { error e => log:printError(
-                                                  "Error sending response", err = e) };
+        var result =caller->respond(res);
+        if (result is error){
+            log:printError("Error sending response", err = result);
+        }
     }
 
     //Allows users to store data in the node.
@@ -92,24 +99,23 @@ service<http:Service> cacheService bind listener {
         methods: ["POST"],
         path: "/entries"
     }
-    multipleStore(endpoint caller, http:Request req) {
+    resource function multipleStore(http:Caller caller, http:Request req) {
         http:Response res = new;
-        json|error obj = req.getJsonPayload();
+        CacheEntry[]|error obj = CacheEntry[].stamp (req.getJsonPayload());
         json resp ;
-        match obj {
-            json jsonObj => {
-                storeMultipleEntries(jsonObj);
-                resp = { "message": "Entries Added"};
-            }
-            error err => {
-                res.statusCode = 400;
-                resp = { "message": "Invalid JSON"};
-                log:printError("Error recieving response", err = err);
-            }
+        if (obj is CacheEntry[]){
+            storeMultipleEntries(obj);
+            resp = { "message": "Entries Added"};
+        }else {
+            res.statusCode = 400;
+            resp = { "message": "Invalid JSON"};
+            log:printError("Error recieving response", err = obj);
         }
         res.setJsonPayload(untaint resp,contentType = "application/json");
-        caller->respond(res) but { error e => log:printError(
-                                                  "Error sending response", err = e) };
+        var result =caller->respond(res);
+        if (result is error){
+            log:printError("Error sending response", err = result);
+        }
     }
 
     //Allows users to store data in the node.
@@ -117,52 +123,55 @@ service<http:Service> cacheService bind listener {
         methods: ["DELETE"],
         path: "/entries/{key}"
     }
-    dataRemove(endpoint caller, http:Request req) {
+    resource function dataRemove(http:Caller caller, http:Request req) {
         http:Response res = new;
         json|error obj = req.getJsonPayload();
         json resp;
-        match obj {
-            json entryJSON => {
-                boolean status = cacheEntries.remove(entryJSON["key"].toString());
-                if (!status){
-                    res.statusCode = 204;
-                }
-                resp = { "message": "Entry executed "+status};
+        if (obj is json){
+            boolean status = cacheEntries.remove(obj["key"].toString());
+            if (!status){
+                res.statusCode = 204;
             }
-            error err => {
-                res.statusCode = 400;
-                resp = { "message": "Invalid JSON"};
-            }
+            resp = { "message": "Entry executed "+status};
+        }else {
+            res.statusCode = 400;
+            resp = { "message": "Invalid JSON"};
         }
         res.setJsonPayload(untaint resp,contentType = "application/json");
-        caller->respond(res) but { error e => log:printError(
-                                                  "Error sending response", err = e) };
+        var result =caller->respond(res);
+        if (result is error){
+            log:printError("Error sending response", err = result);
+        }
     }
 
     @http:ResourceConfig {
         methods: ["DELETE"],
         path: "/entries"
     }
-    evictData(endpoint caller, http:Request req) { //replicas only !!
+    resource function evictData(http:Caller caller, http:Request req) { //replicas only !!
         http:Response res = new;
         json|error jsonData = req.getJsonPayload();
-        string[] entryKeyArr;
+
         json resp;
-        match jsonData {
-            json entryKeyListJSON => {
-                entryKeyArr = check <string[]>entryKeyListJSON;
-                foreach i in entryKeyArr {
-                    _ = cacheEntries.remove(i);
+        if (jsonData is json){
+                string[]|error entryKeyArr = string[].stamp (jsonData);
+                if (entryKeyArr is string[]){
+                    foreach var i in entryKeyArr {
+                        _ = cacheEntries.remove(i);
+                    }
+                    resp = { "message": "Entries evicted"};
+                }else {
+                    res.statusCode = 400;
+                    resp = { "message": "Invalid JSON"};
                 }
-                resp = { "message": "Entries evicted"};
-            }
-            error err => {
+        }else {
                 res.statusCode = 400;
                 resp = { "message": "Invalid JSON"};
-            }
         }
         res.setJsonPayload(untaint resp, contentType = "application/json");
-        caller->respond(res) but { error e => log:printError(
-                                                  "Error sending response", err = e) };
+        var result =caller->respond(res);
+        if (result is error){
+            log:printError("Error sending response", err = result);
+        }
     }
 }

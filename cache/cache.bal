@@ -8,7 +8,7 @@ import ballerina/config;
 //TODO Healthchecks for accurate config values  | Packet loss -> higher retries , higher timeout |
 //TODO Better service discovery
 //TODO Choose a better hashing algo. less collutions, high speed 
-http:Client nodeEndpoint = new ("http://localhost:" + config:getAsString("cache.port", default = "7000"));
+http:Client nodeClientEndpoint = new ("http://localhost:" + config:getAsString("cache.port", default = "7000"));
 
 # Represents a node in the cluster
 # + ip - IP of the node
@@ -16,6 +16,7 @@ http:Client nodeEndpoint = new ("http://localhost:" + config:getAsString("cache.
 type Node record {
     string ip;
     http:Client nodeEndpoint;
+    !...
 };
 
 # Represents a cache entry.
@@ -27,15 +28,16 @@ type Node record {
 # + expiryTimeMillis - Max time limit of the entry
 type CacheEntry record {
     string cacheName;
-    any value;
+    anydata value;
     string key;
     int lastAccessedTime;
     boolean replica;
     int expiryTimeMillis;
+    !...
 };
 
 # Map which stores all of the caches.
-map<Cache> cacheMap;
+map<Cache> cacheMap={};
 string currentIP = config:getAsString("cache.ip", default = "http://localhost");
 int currentPort = config:getAsInt("cache.port", default = 7000);
 int replicationFact = config:getAsInt("cache.replication.fact", default = 1);
@@ -43,8 +45,8 @@ float cacheEvictionFactor = config:getAsFloat("cache.eviction.factor", default =
 int cacheCapacity = config:getAsInt("cache.capacity", default = 100000);
 boolean isLocalCacheEnabled = config:getAsBoolean("cache.local.cache", default = false);
 boolean isRelocationOrEvictionRunning = false;
-map <Node> cacheClientMap;
-map <Node> relocationClientMap;
+map <Node> cacheClientMap={};
+map <Node> relocationClientMap={};
 
 public function initNodeConfig(){
     //Suggestion rest para array suppot for config API
@@ -108,11 +110,11 @@ public function joinCluster(string[] nodesInCfg) {
     //TODO parral
     //sends join request to all nodes specified in config
     foreach var node in nodesInCfg {
-        nodeEndpoint.__init(node);
-        var serverResponse = nodeEndpoint->post("/raft/server", currentNode);
+        nodeClientEndpoint.__init(node);
+        var serverResponse = nodeClientEndpoint->post("/raft/server", currentNode);
         if (serverResponse is http:Response){
-            ClientResponse result = check ClientResponse.convert(serverResponse.getJsonPayload());
-            // ClientResponse result = check <ClientResponse>check payload.getJsonPayload();
+            ClientResponse|error result = ClientResponse.convert(serverResponse.getJsonPayload());
+            if (result is ClientResponse){
                 //if node is the leader join the cluster
                 if (result.sucess) {
                     joinRaft();
@@ -123,9 +125,12 @@ public function joinCluster(string[] nodesInCfg) {
                         callLeaderHint(result.leaderHint);
                     }
                 }
+            }else{
+                log:printError("Invalid JSON ",err=result);
+            }
         }else {
-                log:printInfo("Node didn't Respond");
-                continue;
+            log:printError("Node didn't Respond",err=serverResponse);
+            continue;
         }
     }
     //wait few seconds and retry
@@ -134,23 +139,27 @@ public function joinCluster(string[] nodesInCfg) {
 }
 
 function callLeaderHint (string leaderHint) {
-    nodeEndpoint.__init(leaderHint);
-    var serverResponse = nodeEndpoint->post("/raft/server", currentNode);
+    nodeClientEndpoint.__init(leaderHint);
+    var serverResponse = nodeClientEndpoint->post("/raft/server", currentNode);
     if (serverResponse is http:Response){
-        ClientResponse result = check ClientResponse.convert(serverResponse.getJsonPayload());
-        //if node is the leader join the cluster
-        if (result.sucess) {
-            joinRaft();
-            return;
-        } else {
-            log:printInfo("No " + leaderHint + " is not the leader");
-            if (result.leaderHint == "") {
-                 return;
+        ClientResponse|error result = ClientResponse.convert(serverResponse.getJsonPayload());
+            if (result is ClientResponse){
+                //if node is the leader join the cluster
+            if (result.sucess) {
+                joinRaft();
+                return;
+            } else {
+                log:printInfo("No " + leaderHint + " is not the leader");
+                if (result.leaderHint == "") {
+                    return;
+                }
+                callLeaderHint(result.leaderHint);
             }
-            callLeaderHint(result.leaderHint);
+        }else {
+            log:printError("Invalid JSON ",err=result);
         }
     }else {
-        log:printInfo("Node didn't Respond");
+        log:printError("Node didn't Respond",err=serverResponse);
         return;
     }
 }
@@ -167,23 +176,29 @@ public function createCache(string name) {
 # + name - name of the cache object
 # + return - Cache object associated with the given name
 public function getCache(string name) returns Cache? {
-    foreach var node in cacheClientMap {
+    foreach var (ip,node) in cacheClientMap {
         //changing the url of client endpoint
-        var response = node.nodeEndpoint->get("/cache/" + name);
+        nodeClientEndpoint =untaint node.nodeEndpoint;
+        var response = nodeClientEndpoint->get("/cache/" + name);
         if (response is http:Response){
             var cacheJson = response.getJsonPayload();
             if (cacheJson is json){
                 //if Cache object found in the node
                 if (response.statusCode!=204) {
-                    Cache cacheObj = check Cache.convert(cacheJson);
-                    cacheMap[name] = cacheObj;
+                    Cache cacheObj = new("temp"); //TODO Fix casting
+                    cacheObj.name = cacheJson.name.toString();
+                    cacheObj.expiryTimeMillis = <int>cacheJson.expiryTimeMillis;
+                    LocalCacheConfig|error cfg = LocalCacheConfig.convert(cacheJson.LocalCacheConfig);
+                    if (cfg is LocalCacheConfig){
+                        cacheObj.nearCache.config = cfg;
+                    }
                     //store object locally
                     return cacheObj;
                 } else {
                     log:printWarn(name + " Cache not found- in " + node.ip);
                 }
             }else if (cacheJson is error){
-                log:printError("Error parsing JSON", err = msg);
+                log:printError("Error parsing JSON", err = cacheJson);
             }
         }else {
             log:printError("Server response not recieved", err = response);
@@ -200,11 +215,10 @@ type CacheConfig record {
 
 # Represents a cache.
 public type Cache object {
-    string name;
-    int expiryTimeMillis;
+    string name="";
+    int expiryTimeMillis=60000;
     //TODO add time eviction support
-    LocalCache nearCache = new(name,capacity = config:getAsInt("local.cache.capacity", default = 100), evictionFactor =
-        config:getAsFloat("local.cache.eviction.factor", default = 0.25),expiryTimeMillis = expiryTimeMillis); //maybe move from the object?
+    LocalCache nearCache = new (expiryTimeMillis,config:getAsInt("local.cache.capacity"),config:getAsFloat("local.cache.eviction.factor")); 
 
     public function __init (string name, int expiryTimeMillis = 60000) {
         Cache? cache = cacheMap[name];
@@ -216,9 +230,13 @@ public type Cache object {
             Cache? remoteCache = getCache(name);
             if (remoteCache is Cache){
                     self = remoteCache;
+                    cacheMap[name] = remoteCache;
                     log:printInfo("Cache Found- " + self.name);
             }else {
                     cacheMap[name] = self;
+                    self.name=name;
+                    self.expiryTimeMillis=expiryTimeMillis;
+                    //TODO local cache config
                     log:printInfo("Cache Created " + self.name);
                     return;
             }
@@ -228,24 +246,26 @@ public type Cache object {
     # Adds the given key, value pair to the provided cache.It will be stored in a appropirate node in the cluster
     # + key - value which should be used as the key
     # + value - value to be cached
-    public function put(string key, any value) {
+    public function put(string key, anydata value) {
         //Adding in to nearCache for quick retrival
         if (isLocalCacheEnabled) {
-            nearCache.put(key, value);
+            self.nearCache.put(key, value);
         }
         //gets the assigned node ip from the ring
         string originalEntryNode = hashRing.get(key);
         int currentTime = time:currentTime().time;
-        CacheEntry entry = { value: value, key: key, lastAccessedTime: currentTime, createdTime: currentTime, cacheName:
+        CacheEntry entry = { value: value, key: key, lastAccessedTime: currentTime, cacheName:
         self.name, replica: false, expiryTimeMillis: self.expiryTimeMillis };
-        json entryJSON = check <json>entry;
-        Node? clientNode = cacheClientMap[originalEntryNode];
-        if (clientNode is Node){
-                var res = clientNode.nodeEndpoint->post("/cache/entries/"+key, entryJSON);
+        json|error entryJSON = json.convert(entry);
+        if (entryJSON is json){
+            Node? clientNode = cacheClientMap[originalEntryNode];
+            if (clientNode is Node){
+                nodeClientEndpoint = clientNode.nodeEndpoint;
+                var res = nodeClientEndpoint->post("/cache/entries/"+key, entryJSON);
                 if (res is http:Response){
-                    var msg = resp.getJsonPayload();
+                    var msg = res.getJsonPayload();
                     if (msg is json){
-                        log:printInfo("'" + jsonPayload["key"].toString() + "' added");
+                        log:printInfo("'" + msg["key"].toString() + "' added");
                     }else {
                         log:printError("error json convert", err = msg);
                     }
@@ -256,32 +276,40 @@ public type Cache object {
         }else {
             log:printError("Client not found");
         }
+        }else {
+            log:printError("Error parsing JSON", err = entryJSON);
+        }
     }
 
     # Returns the cached value associated with the given key. If the provided cache key is not found in the cluster, () will be returned.
     # + key - key which is used to retrieve the cached value
     # + return  -The cached value associated with the given key
-    public function get(string key) returns any? {
+    public function get(string key) returns anydata? {
         if (isLocalCacheEnabled) {
-            if (nearCache.hasKey(key)) {
+            if (self.nearCache.hasKey(key)) {
                 log:printInfo(key + " retrived by local Cache");
                 //sends async request to update last accessed time of distributed cache
                 _ = start updateLastAccessedTime(key);
                 //TODO update local cahe maybe
-                return nearCache.get(key);
+                return self.nearCache.get(key);
             }
         }
         string nodeIP = hashRing.get(key);
         //Cache key  made from replica status,cache name and actual key
         //O - Original R - Replica
-        string originalKey = "O:" + name + ":" + key;
+        string originalKey = "O:" + self.name + ":" + key;
         var remoteEntry = getEntryFromServer(nodeIP, originalKey);
         if (remoteEntry is json){
             if (remoteEntry.value != null) {
-                CacheEntry entry = check <CacheEntry>remoteEntry;
-                nearCache.put(key, entry.value); //add to near cache for quick retrival
-                //log:printInfo("Entry found '" + key + "'");
+                //CacheEntry entry = CacheEntry.convert(remoteEntry);
+                CacheEntry|error entry = CacheEntry.convert(remoteEntry);
+                if (entry is CacheEntry){
+                    self.nearCache.put(key, entry.value); //add to near cache for quick retrival
+                    //log:printInfo("Entry found '" + key + "'");
                 return entry.value;
+                }else {
+                    return ();
+                }
             }
             else {
                 log:printWarn("Entry not found '" + key + "'");
@@ -289,24 +317,28 @@ public type Cache object {
                 return ();
             }
         }else {
-            log:printError(err.message, err = remoteEntry);
+            log:printError("Original Server couldn't connect", err = remoteEntry);
             string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
-            string replicaKey = "R:" + name + ":" + key;
-            future<json|error>[] replicaNodeFutures;
+            string replicaKey = "R:" + self.name + ":" + key;
+            future<json|error>[] replicaNodeFutures=[];
             //sends to both replicas async. this should be updated in to first come basis.
             foreach var node in replicaNodes {
                 if (node == nodeIP) {
                     continue;
                 }
-                replicaNodeFutures[lengthof replicaNodeFutures] = start getEntryFromServer(node, replicaKey);
+                replicaNodeFutures[replicaNodeFutures.length()] = start getEntryFromServer(node, replicaKey);
             }
             foreach var replicaFuture in replicaNodeFutures {
                 json|error response = wait replicaFuture;
                 if (response is json){
                     if (response.value != null) {
-                        CacheEntry replicaEntry = check <CacheEntry>response;
-                        //log:printInfo("Entry found in replica '" + key + "'");
-                        return replicaEntry.value;
+                        CacheEntry|error replicaEntry = CacheEntry.convert(response);
+                        if (replicaEntry is CacheEntry){
+                            //log:printInfo("Entry found in replica '" + key + "'");
+                            return replicaEntry.value;
+                        }else {
+                            log:printWarn("Entry not valid '" + key + "'");
+                        }
                     }
                     else {
                         log:printWarn("Entry not found '" + key + "'");
@@ -326,23 +358,24 @@ public type Cache object {
     public function remove(string key) {
         //Adding in to nearCache for quick retrival
         if (isLocalCacheEnabled) {
-            nearCache.remove(key);
+            self.nearCache.remove(key);
         }
         string nodeIP = hashRing.get(key);
         json entryJSON = { "key": key };
         Node? clientNode = cacheClientMap[nodeIP];
         if (clientNode is Node){
-            var res = clientNode.nodeEndpoint->delete("/cache/entries"+key, entryJSON);
+            nodeClientEndpoint = clientNode.nodeEndpoint;
+            var res = nodeClientEndpoint->delete("/cache/entries"+key, entryJSON);
             if (res is http:Response){
                 json|error msg = res.getJsonPayload();
                 if (msg is json){
                     log:printInfo("Cache entry remove " + msg["status"].toString());
                 }else {
-                    log:printError("error json convert", err = err);
+                    log:printError("error json convert", err = msg);
                 }
             }else {
                 //TODO Queue here
-                log:printError("error removing from node", err = err);
+                log:printError("error removing from node", err = res);
             }
             //remove entries in replicas asnyc
             _ = start removeReplicas(key, nodeIP);
@@ -359,14 +392,15 @@ function putEntriesInToReplicas(json entryJSON, string key, string originalTarge
     foreach var node in replicaNodes {
         Node? replicaNode = cacheClientMap[node];
         if (replicaNode is Node){
-                var response = replicaNode.nodeEndpoint->post("/cache/entries"+key, entryJSON);
+            nodeClientEndpoint = replicaNode.nodeEndpoint;
+                var response = nodeClientEndpoint->post("/cache/entries"+key, entryJSON);
                 if (response is http:Response){
                     var msg = response.getJsonPayload();
                     if (msg is json){
                                                         //silent in sucess case
                             //log:printInfo("'" + jsonPayload["key"].toString() + "' replica added to node " + node);
                     }else {
-                            log:printError(err.message, err = msg);
+                            log:printError("Not a valid JSON", err = msg);
                     }
                 }else {
                     log:printError("Put replica request failed", err = response);
@@ -382,7 +416,7 @@ function putEntriesInToReplicas(json entryJSON, string key, string originalTarge
 function updateLastAccessedTime(string key) {
     //Sending a get to replicas updates their last accessed time.
     string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
-    replicaNodes[lengthof replicaNodes] = hashRing.get(key);
+    replicaNodes[replicaNodes.length()] = hashRing.get(key);
     foreach var node in replicaNodes {
         _ = start getEntryFromServer(node, key);
     }
@@ -395,13 +429,14 @@ function updateLastAccessedTime(string key) {
 function getEntryFromServer(string ip, string key) returns json|error {
     Node? replicaNode = cacheClientMap[ip];
     if (replicaNode is Node){
-        var res = replica.nodeEndpoint->get("/cache/entries/" + key);
+        nodeClientEndpoint = replicaNode.nodeEndpoint;
+        var res = nodeClientEndpoint->get("/cache/entries/" + key);
         if (res is http:Response){
             var msg = res.getJsonPayload();
             if (msg is json){
                 return msg;
             }else {
-                log:printError(err.message, err = msg);
+                log:printError("Invalid JSON ", err = msg);
                 return msg;
             }
         }else {
@@ -410,7 +445,7 @@ function getEntryFromServer(string ip, string key) returns json|error {
         }
     }else {
         log:printError("Client not found");
-        error err = { message: "Client not found" };
+        error err = error("Client not found");
         return err;
     }
 }

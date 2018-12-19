@@ -24,39 +24,34 @@ public function main(string... args) {
 
 public function writeToJson(int entryCount, float requestsPerSecond, boolean localCacheEnabled,int capacity,float evictionFactor,int partitions,int replicationFact,int iteration,int nodes) {
     string filePath = "./reports/get.json";
-    json existingContent;
-    try {
-        existingContent = read(filePath);
-    }
-    catch (error e) {
-        //content = [];
-    }
+    json|error existingContent = read(filePath);
+    if (existingContent is json ){
+        time:Time time = time:currentTime();
+        int currentTime = time.time;
+        json newContent = {
+            "currentTime": currentTime,
+            "entryCount": entryCount,
+            "Requests per second": requestsPerSecond,
+            "localCache": localCacheEnabled,
+            "capacity":capacity,
+            "evictionFactor":evictionFactor,
+            "partitions":partitions,
+            "replicationFact":replicationFact,
+            "iteration":iteration,
+            "nodeCount":nodes
+        };
 
-    time:Time time = time:currentTime();
-    int currentTime = time.time;
-    json newContent = {
-        "currentTime": currentTime,
-        "entryCount": entryCount,
-        "Requests per second": requestsPerSecond,
-        "localCache": localCacheEnabled,
-        "capacity":capacity,
-        "evictionFactor":evictionFactor,
-        "partitions":partitions,
-        "replicationFact":replicationFact,
-        "iteration":iteration,
-        "nodeCount":nodes
-    };
-
-    existingContent[lengthof existingContent] = newContent;
-    write(existingContent, filePath);
+        existingContent[existingContent.length()] = newContent;
+        _=write(existingContent, filePath);
+    }
 }
 function runTest(int entryCount) returns float {
     cache:Cache benchCache = new("oauthCache");
-    string[] keyArr;
+    string[] keyArr=[];
     // int spanId = observe:startRootSpan("Parent Span");
     // int spanId2 = check observe:startSpan("Child Span", parentSpanId = spanId);
     io:println("Starting populating cache");
-    foreach i in 0...entryCount - 1{
+    foreach var i in 0...entryCount - 1{
         string str = <string> i;
         keyArr[i] = str;
          _=benchCache.put(str,str);
@@ -66,7 +61,7 @@ function runTest(int entryCount) returns float {
     int startingTime = time:nanoTime();
     //start timer
 
-    foreach i in 0...entryCount - 1{
+    foreach var i in 0...entryCount - 1{
         var x = benchCache.get(keyArr[i]);
         if (x==()){
             io:println (x);
@@ -109,67 +104,57 @@ function runTest(int entryCount) returns float {
 function randomString() returns string {
     string[] letterArr = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S",
     "T", "U", "V", "W", "X", "Y", "Z", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
-    string randomStr;
-    foreach letter in letterArr {
-        int randomIndex = math:randomInRange(0, lengthof letterArr);
+    string randomStr="";
+    foreach var letter in letterArr {
+        int randomIndex = math:randomInRange(0, letterArr.length());
         string randomLetter = letterArr[randomIndex];
         randomStr += randomLetter;
     }
     return randomStr;
 }
 
-
-function close(io:ReadableCharacterChannel|io:WritableCharacterChannel
-               characterChannel) {
-    match characterChannel {
-        io:ReadableCharacterChannel readableCharChannel => {
-            readableCharChannel.close() but {
-                error e =>
-                log:printError("Error occurred while closing character stream",
-                    err = e)
-            };
-        }
-        io:WritableCharacterChannel writableCharChannel => {
-            writableCharChannel.close() but {
-                error e =>
-                log:printError("Error occurred while closing character stream",
-                    err = e)
-            };
-        }
+function closeRc(io:ReadableCharacterChannel rc) {
+    var result = rc.close();
+    if (result is error) {
+        log:printError("Error occurred while closing character stream",
+                        err = result);
     }
 }
 
-function write(json content, string path) {
-    io:WritableByteChannel byteChannel = io:openWritableFile(path);
-
-    io:WritableCharacterChannel ch = new io:WritableCharacterChannel(byteChannel, "UTF8");
-
-    match ch.writeJson(content) {
-        error err => {
-            close(ch);
-            throw err;
-        }
-        () => {
-            close(ch);
-            io:println("Content written successfully");
-        }
+function closeWc(io:WritableCharacterChannel wc) {
+    var result = wc.close();
+    if (result is error) {
+        log:printError("Error occurred while closing character stream",
+                        err = result);
     }
 }
 
+function read(string path) returns json|error {
 
-function read(string path) returns json {
-    io:ReadableByteChannel byteChannel = io:openReadableFile(path);
+    io:ReadableByteChannel rbc = io:openReadableFile(path);
 
-    io:ReadableCharacterChannel ch = new io:ReadableCharacterChannel(byteChannel, "UTF8");
+    io:ReadableCharacterChannel rch = new(rbc, "UTF8");
+    var result = rch.readJson();
+    if (result is error) {
+        closeRc(rch);
+        return result;
+    } else {
+        closeRc(rch);
+        return result;
+    }
+}
 
-    match ch.readJson() {
-        json result => {
-            close(ch);
-            return result;
-        }
-        error err => {
-            close(ch);
-            throw err;
-        }
+function write(json content, string path) returns error? {
+
+    io:WritableByteChannel wbc = io:openWritableFile(path);
+
+    io:WritableCharacterChannel wch = new(wbc, "UTF8");
+    var result = wch.writeJson(content);
+    if (result is error) {
+        closeWc(wch);
+        return result;
+    } else {
+        closeWc(wch);
+        return result;
     }
 }

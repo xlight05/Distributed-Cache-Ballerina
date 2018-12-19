@@ -3,47 +3,44 @@ import ballerina/log;
 import ballerina/io;
 import ballerina/math;
 import ballerina/time;
+import ballerina/task;
 import consistent_bound;
 
 # cacheEntries contains all the entries in the current node
-map<CacheEntry> cacheEntries;
+map<CacheEntry> cacheEntries={};
 consistent_bound:Consistent hashRing = new();
 # Cache cleanup task starting delay in ms.
-@final int CACHE_CLEANUP_START_DELAY = 0;
+const int CACHE_CLEANUP_START_DELAY = 0;
 
 # Cache cleanup task invoking interval in ms.
-@final int CACHE_CLEANUP_INTERVAL = 5000;
+const int CACHE_CLEANUP_INTERVAL = 5000;
 
 task:Timer cacheCleanupTimer = createCacheCleanupTask();
 
 //Returns single cache entry according to given key
-function getCacheEntry(string key) returns json? {
+function getCacheEntry(string key) returns CacheEntry? {
     CacheEntry? cacheEntry = cacheEntries[key];
-    match cacheEntry {
-        CacheEntry entry => {
-            int currentSystemTime = time:currentTime().time;
-            //checks if entry is expired
-            if (currentSystemTime >= entry.lastAccessedTime + entry.expiryTimeMillis) {
-                // If it is expired, remove the cache and return nil.
-                _ = cacheEntries.remove(key);
-                _ = start removeReplicas(key, currentNode);
-                return ();
-            }
-            //updates last accessed time
-            entry.lastAccessedTime = time:currentTime().time;
-            return check <json>entry;
-        }
-        () => {
+    if (cacheEntry is CacheEntry){
+        int currentSystemTime = time:currentTime().time;
+        //checks if entry is expired
+        if (currentSystemTime >= cacheEntry.lastAccessedTime + cacheEntry.expiryTimeMillis) {
+            // If it is expired, remove the cache and return nil.
+            _ = cacheEntries.remove(key);
+            _ = start removeReplicas(key, currentNode);
             return ();
         }
+        //updates last accessed time
+        cacheEntry.lastAccessedTime = time:currentTime().time;
+        return cacheEntry;
+    }else {
+        return ();
     }
 }
 
 //Adds a single cache entry to the store
-function setCacheEntry(json entryJson) returns string{
-    CacheEntry entry = check <CacheEntry>entryJson;
+function setCacheEntry(CacheEntry entry) returns string {
     //checks if node size is exceeded
-    if (cacheCapacity <= lengthof cacheEntries) {
+    if (cacheCapacity <= cacheEntries.length()) {
         evictEntries();
     }
     string key = entry.cacheName + ":" + entry.key;
@@ -53,31 +50,40 @@ function setCacheEntry(json entryJson) returns string{
     } else {
         key = "O:" + key;
     }
-    cacheEntries[key] = check <CacheEntry>entryJson;
+    cacheEntries[key] = entry;
     return entry.key;
 }
 
 //Returns all the cache entries avaialbe in the node
 function getAllEntries() returns json {
-    json payload = check <json>cacheEntries;
-    return payload;
+    json|error payload = json.convert (cacheEntries);
+    if (payload is json){
+        return payload;
+    }else {
+        return {};
+    }
 }
 
 //Returns all the changed entries of the node catagorized according to node IP.
 function getChangedEntries() returns json {
-    json entries;
+    json entries={};
     //Init json according to nodes
-    foreach node in cacheClientMap {
+    foreach var (index,node) in cacheClientMap {
         entries[node.ip] = [];
     }
     isRelocationOrEvictionRunning = true;
-    foreach key, value in cacheEntries {
+    foreach var (key, value) in cacheEntries {
         if (value.replica) {
             string[] replicaNodes = hashRing.GetClosestN(value.key, replicationFact);
             boolean remove = true;
-            foreach replicaNode in replicaNodes {
+            foreach var replicaNode in replicaNodes {
                 if (replicaNode != currentNode) {
-                    entries[replicaNode][lengthof entries[replicaNode]] = check <json>value;
+                    json|error valueJSON = json.convert(value);
+                    if (valueJSON is json){
+                        entries[replicaNode][entries[replicaNode].length()] = valueJSON;
+                    }else {
+                        //will always convert
+                    }
                 }
                 else {
                     remove = false;
@@ -97,12 +103,17 @@ function getChangedEntries() returns json {
             string correctNodeIP = hashRing.get(value.key);
             //Checks if the node is changed
             if (correctNodeIP != currentNode) {
-                entries[correctNodeIP][lengthof entries[correctNodeIP]] = check <json>value;
+                json|error valueJSON = json.convert(value);
+                    if (valueJSON is json){
+                        entries[correctNodeIP][entries[correctNodeIP].length()] = valueJSON;
+                    }else {
+                        //will always convert
+                    }
                 _ = cacheEntries.remove(key); //Assuming the response was recieved :/
             }
             string[] replicaNodes = hashRing.GetClosestN(value.key, replicationFact);
-            boolean found;
-            foreach i in replicaNodes {
+            boolean found=false;
+            foreach var i in replicaNodes {
                 if (i == currentNode){
                     found = true;
                 }
@@ -119,22 +130,21 @@ function getChangedEntries() returns json {
     return entries;
 }
 //Adds multiple entries to the cache.
-function storeMultipleEntries(json jsonObj) {
-    log:printInfo("Recieved entries" + jsonObj.toString());
-    if (cacheCapacity <= lengthof cacheEntries + lengthof jsonObj) {
+function storeMultipleEntries(CacheEntry[] jsonObj) {
+    //log:printInfo("Recieved entries" + jsonObj);
+    if (cacheCapacity <= cacheEntries.length() +jsonObj.length()) {
         evictEntries();
     }
     lock {
         isRelocationOrEvictionRunning = true;
-        foreach nodeItem in jsonObj {
-            CacheEntry entry = check <CacheEntry>nodeItem;
+        foreach var entry in jsonObj {//TODO revisit
             string key = entry.cacheName + ":" + entry.key;
             if (entry.replica) {
                 key = "R:" + key;
             } else {
                 key = "O:" + key;
             }
-            cacheEntries[key] = check <CacheEntry>nodeItem;
+            cacheEntries[key] = entry;
         }
         isRelocationOrEvictionRunning = false;
     }
@@ -147,7 +157,7 @@ function evictEntries() {
     int[] timestamps = [];
     // Iterate through the keys.
     isRelocationOrEvictionRunning = true;
-    foreach key, value in cacheEntries {
+    foreach var (key, value) in cacheEntries {
         if (value.replica) {
             continue;
         }
@@ -155,17 +165,17 @@ function evictEntries() {
         checkAndAddEntries(keyCountToEvict, cacheKeysToBeRemoved, timestamps, key, value.lastAccessedTime);
     }
     // Return the array.
-    json entries;
+    json entries={};
     //Node catagorize
-    foreach node in cacheClientMap{
+    foreach var (index,node) in cacheClientMap{
             entries[node.ip] = [];
     }
-    foreach c in cacheKeysToBeRemoved {
+    foreach var c in cacheKeysToBeRemoved {
         string plainKey = c.split(":")[2];
         // These cache values are ignred. So it is not needed to check the return value for the remove function.
         string[] replicaNodes = hashRing.GetClosestN(plainKey, replicationFact);
-        foreach node in replicaNodes {
-                entries[node][lengthof entries[node]] = "R:" + c.split(":")[1]+":"+c.split(":")[2];
+        foreach var node in replicaNodes {
+                entries[node][entries[node].length()] = "R:" + c.split(":")[1]+":"+c.split(":")[2];
         }
         _ = cacheEntries.remove(c);
         log:printInfo(c + " Entry Evicted");
@@ -176,29 +186,23 @@ function evictEntries() {
 }
 
 function evictReplicas(json entries) {
-    foreach nodeItem in cacheClientMap {
-        if (lengthof entries[nodeItem.ip]== 0){
+    foreach var (index,nodeItem) in cacheClientMap {
+        if (entries[nodeItem.ip].length()== 0){
             //if not replicas evicted no need to send the request
             continue;
         }
-        nodeEndpoint = nodeItem.nodeEndpoint;
-        var res = nodeEndpoint->delete("/cache/entries", untaint entries[nodeItem.ip]);
+        nodeClientEndpoint = nodeItem.nodeEndpoint;
+        var res = nodeClientEndpoint->delete("/cache/entries", untaint entries[nodeItem.ip]);
         //sends changed entries to correct node
-        match res {
-            http:Response resp => {
-                var msg = resp.getJsonPayload();
-                match msg {
-                    json jsonPayload => {
-                        log:printInfo("Entries sent to " + nodeItem.ip);
-                    }
-                    error err => {
-                        log:printError(err.message, err = err);
-                    }
-                }
+        if (res is http:Response){
+            var msg = res.getJsonPayload();
+            if (msg is json){
+                log:printInfo("Entries sent to " + nodeItem.ip);
+            }else {
+                log:printError("Invalid JSON", err = msg);
             }
-            error err => {
-                log:printError(err.message, err = err);
-            }
+        }else {
+                log:printError("Response not recieved ", err = res);
         }
     }
 }
@@ -211,10 +215,10 @@ function checkAndAddEntries(int numberOfKeysToEvict, string[] cacheKeys, int[] t
 
     // Iterate while we count all values from 0 to numberOfKeysToEvict exclusive of numberOfKeysToEvict since the
     // array size should be numberOfKeysToEvict.
-    foreach index in 0..<numberOfKeysToEvict {
+    foreach var index in 0..<numberOfKeysToEvict {
         // If we have encountered the end of the array, that means we can add the new values to the end of the
         // array since we haven’t reached the numberOfKeysToEvict limit.
-        if (lengthof cacheKeys == index) {
+        if (cacheKeys.length() == index) {
             cacheKeys[index] = myKey;
             timestamps[index] = myLastAccessTime;
             // Break the loop since we don't have any more elements to compare since we are at the end
@@ -236,23 +240,23 @@ function checkAndAddEntries(int numberOfKeysToEvict, string[] cacheKeys, int[] t
     }
 }
 
-
-function cacheExpiry() {
-    json entries;
-    foreach node in cacheClientMap{
+function cacheExpiry()returns error?  {
+    json entries={};
+    foreach var (index,node) in cacheClientMap{
             entries[node.ip] = [];
     }
-    foreach key, value in cacheEntries {
+    foreach var (key, value) in cacheEntries {
         int currentSystemTime = time:currentTime().time;
         if (currentSystemTime >= value.lastAccessedTime + value.expiryTimeMillis) {
             string[] replicaNodes = hashRing.GetClosestN(value.key, replicationFact);
-            foreach node in replicaNodes {
-                    entries[node][lengthof entries[node]] = "R:" + key.split(":")[1];
+            foreach var node in replicaNodes {
+                    entries[node][entries[node].length()] = "R:" + key.split(":")[1];
             }
             _ = cacheEntries.remove(key);
         }
     }
     evictReplicas(entries);
+    return ();
 }
 
 
@@ -265,33 +269,24 @@ function createCacheCleanupTask() returns task:Timer {
 
 function removeReplicas(string key, string originalNode) {
     string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
-    foreach node in replicaNodes {
+    foreach var node in replicaNodes {
         Node? replicaNode = cacheClientMap[node];
-        match replicaNode {
-            Node replica => {
-                nodeEndpoint = replica.nodeEndpoint;
+        if (replicaNode is Node){
                 json entryJSON = { "key": key };
-                var response = nodeEndpoint->delete("/cache/entries"+key, entryJSON);
-                match response {
-                    http:Response resp => {
-                        var msg = resp.getJsonPayload();
-                        match msg {
-                            json jsonPayload => {
-                                log:printInfo("Cache entry replica remove " + jsonPayload["status"].toString());
-                            }
-                            error err => {
-                                log:printError(err.message, err = err);
-                            }
+                nodeClientEndpoint =replicaNode.nodeEndpoint;
+                var response = nodeClientEndpoint->delete("/cache/entries"+key, entryJSON);
+                if (response is http:Response){
+                        var msg = response.getJsonPayload();
+                        if (msg is json){
+                            log:printInfo("Cache entry replica remove " + msg["status"].toString());
+                        }else {
+                            log:printError("Invalid JSON ", err = msg);
                         }
-                    }
-                    error err => {
-                        log:printError(err.message, err = err);
-                    }
+                }else {
+                    log:printError("Response not recieved ", err = response);
                 }
-            }
-            () => {
-                log:printError("Client not found");
-            }
+        }else {
+            log:printError("Client not found");
         }
     }
 }
@@ -300,27 +295,21 @@ function removeReplicas(string key, string originalNode) {
 function relocateData() {
     lock{
         json changedJson = getChangedEntries();
-        foreach nodeItem in relocationClientMap {
+        foreach var (index,nodeItem) in relocationClientMap {
             string nodeIP = nodeItem.ip;
-            nodeEndpoint = nodeItem.nodeEndpoint;
             log:printInfo("Relocating data");
-            var res = nodeEndpoint->post("/cache/entries", untaint changedJson[nodeIP]);
+            nodeClientEndpoint = nodeItem.nodeEndpoint;
+            var res = nodeClientEndpoint->post("/cache/entries", untaint changedJson[nodeIP]);
             //sends changed entries to correct node
-            match res {
-                http:Response resp => {
-                    var msg = resp.getJsonPayload();
-                    match msg {
-                        json jsonPayload => {
-                            log:printInfo("Entries sent to " + nodeIP);
-                        }
-                        error err => {
-                            log:printError(err.message, err = err);
-                        }
+            if (res is http:Response){
+                    var msg = res.getJsonPayload();
+                    if (msg is json){
+                        log:printInfo("Entries sent to " + nodeIP);
+                    }else {
+                        log:printError("Invalid JSON",err = msg);
                     }
-                }
-                error err => {
-                    log:printError(err.message, err = err);
-                }
+            }else {
+                log:printError("Response not recieved");
             }
         }
     }

@@ -18,7 +18,7 @@ import ballerina/io;
 
 
 public function mergeSort(int[] unsortedArray) returns @untainted int[] {
-    sort(unsortedArray, 0, lengthof unsortedArray - 1);
+    sort(unsortedArray, 0, unsortedArray.length() - 1);
     return unsortedArray;
 }
 
@@ -50,11 +50,11 @@ function merge(int[] arr, int startIndex, int middleIndex, int endIndex) {
     int[] rightArray = [subArray2Size];
 
     //Copy data to temp
-    foreach i in 0...subArray1Size - 1 {
+    foreach var i in 0...subArray1Size - 1 {
         leftArray[i] = arr[startIndex + i];
     }
 
-    foreach j in 0...subArray2Size - 1 {
+    foreach var j in 0...subArray2Size - 1 {
         rightArray[j] = arr[middleIndex + 1 + j];
     }
 
