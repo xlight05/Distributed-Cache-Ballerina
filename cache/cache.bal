@@ -106,11 +106,18 @@ function createCluster() {
 
 # Allows uesrs to join the cluster
 # + nodesInCfg - ips of the nodes in the cluster
-public function joinCluster(string[] nodesInCfg) {
+public function joinCluster(string[] clusterMemberIPsInConfig) {
     //TODO parral
     //sends join request to all nodes specified in config
-    foreach var node in nodesInCfg {
-        nodeClientEndpoint.__init(node);
+    foreach var clusterMemberIP in clusterMemberIPsInConfig {
+
+    }
+    //wait few seconds and retry
+    runtime:sleep(1000);
+    joinCluster(clusterMemberIPsInConfig);
+}
+function attemptToJoinCluster (string clusterMemberIP){
+        nodeClientEndpoint.__init(clusterMemberIP);
         var serverResponse = nodeClientEndpoint->post("/raft/server", currentNode);
         if (serverResponse is http:Response){
             ClientResponse|error result = ClientResponse.convert(serverResponse.getJsonPayload());
@@ -120,7 +127,7 @@ public function joinCluster(string[] nodesInCfg) {
                     joinRaft();
                     return;
                 } else {
-                    log:printInfo("No " + node + " is not the leader");
+                    log:printInfo("No " + clusterMemberIP + " is not the leader");
                     if (result.leaderHint != ""){
                         callLeaderHint(result.leaderHint);
                     }
@@ -132,10 +139,6 @@ public function joinCluster(string[] nodesInCfg) {
             log:printError("Node didn't Respond",err=serverResponse);
             continue;
         }
-    }
-    //wait few seconds and retry
-    runtime:sleep(1000);
-    joinCluster(nodesInCfg);
 }
 
 function callLeaderHint (string leaderHint) {
@@ -175,25 +178,18 @@ public function createCache(string name) {
 # Allows users to create a cache object
 # + name - name of the cache object
 # + return - Cache object associated with the given name
-public function getCache(string name) returns Cache? {
+public function getCache(string name) returns json? {
     foreach var (ip,node) in cacheClientMap {
         //changing the url of client endpoint
         nodeClientEndpoint =untaint node.nodeEndpoint;
         var response = nodeClientEndpoint->get("/cache/" + name);
         if (response is http:Response){
-            var cacheJson = response.getJsonPayload();
+            var cacheJson = untaint response.getJsonPayload();
             if (cacheJson is json){
                 //if Cache object found in the node
                 if (response.statusCode!=204) {
-                    Cache cacheObj = new("temp"); //TODO Fix casting
-                    cacheObj.name = cacheJson.name.toString();
-                    cacheObj.expiryTimeMillis = <int>cacheJson.expiryTimeMillis;
-                    LocalCacheConfig|error cfg = LocalCacheConfig.convert(cacheJson.LocalCacheConfig);
-                    if (cfg is LocalCacheConfig){
-                        cacheObj.nearCache.config = cfg;
-                    }
-                    //store object locally
-                    return cacheObj;
+                    //Cache cacheObj = new(remoteCacheName,expiryTimeMillis = remoteCacheExpiryTime,localCapacity = remoteCacheLocalCap,localEvictionFactor =remoteCacheEF);
+                    return cacheJson;
                 } else {
                     log:printWarn(name + " Cache not found- in " + node.ip);
                 }
@@ -213,29 +209,41 @@ type CacheConfig record {
     int maxEntrySize;
 };
 
+const int NOT_SET = 5;
 # Represents a cache.
 public type Cache object {
     string name="";
     int expiryTimeMillis=60000;
+    
     //TODO add time eviction support
     LocalCache nearCache = new (expiryTimeMillis,config:getAsInt("local.cache.capacity"),config:getAsFloat("local.cache.eviction.factor")); 
 
-    public function __init (string name, int expiryTimeMillis = 60000) {
+    public function __init (string name, int expiryTimeMillis = 60000,int localCapacity = -1 , float localEvictionFactor = -1.0 ) {
         Cache? cache = cacheMap[name];
         if (cache is Cache){
             self = cache;
             log:printInfo("Cache Found- " + self.name);
             return;
         }else {
-            Cache? remoteCache = getCache(name);
-            if (remoteCache is Cache){
-                    self = remoteCache;
-                    cacheMap[name] = remoteCache;
+            json? remoteCache = getCache(name);
+            if (!(remoteCache is ())){
+                    self.name = remoteCache.name.toString();
+                    self.expiryTimeMillis = <int>remoteCache.expiryTimeMillis;
+                    self.nearCache = new (self.expiryTimeMillis,<int>remoteCache.LocalCacheConfig.capacity,<float>remoteCache.LocalCacheConfig.evictionFactor);
+                    cacheMap[name] = self;
                     log:printInfo("Cache Found- " + self.name);
             }else {
                     cacheMap[name] = self;
                     self.name=name;
                     self.expiryTimeMillis=expiryTimeMillis;
+                    //TODO make -1 a const 
+                    if (localCapacity===-1){
+                        localCapacity = config:getAsInt("local.cache.capacity");
+                    }
+                    if (localEvictionFactor===-1.0){
+                        localEvictionFactor = config:getAsFloat("local.cache.eviction.factor");
+                    }
+                    self.nearCache = new(expiryTimeMillis,localCapacity,localEvictionFactor);
                     //TODO local cache config
                     log:printInfo("Cache Created " + self.name);
                     return;

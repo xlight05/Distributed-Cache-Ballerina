@@ -2,6 +2,7 @@ import ballerina/system;
 import ballerina/task;
 import ballerina/time;
 
+//TODO remove this
 map<LocalCache> localCacheMap={};
 
 # Cache cleanup task starting delay in ms.
