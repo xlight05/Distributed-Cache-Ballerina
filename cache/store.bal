@@ -26,7 +26,7 @@ function getCacheEntry(string key) returns CacheEntry? {
         if (currentSystemTime >= cacheEntry.lastAccessedTime + cacheEntry.expiryTimeMillis) {
             // If it is expired, remove the cache and return nil.
             _ = cacheEntries.remove(key);
-            _ = start removeReplicas(key, currentNode);
+            _ = start removeReplicas(key);
             return ();
         }
         //updates last accessed time
@@ -81,13 +81,11 @@ function getChangedEntries() returns json {
                     json|error valueJSON = json.convert(value);
                     if (valueJSON is json){
                         entries[replicaNode][entries[replicaNode].length()] = valueJSON;
-                    }else {
-                        //will always convert
                     }
                 }
                 else {
                     remove = false;
-                }
+                }   
             }
             if (remove) {
                 _ = cacheEntries.remove(key);
@@ -106,8 +104,6 @@ function getChangedEntries() returns json {
                 json|error valueJSON = json.convert(value);
                     if (valueJSON is json){
                         entries[correctNodeIP][entries[correctNodeIP].length()] = valueJSON;
-                    }else {
-                        //will always convert
                     }
                 _ = cacheEntries.remove(key); //Assuming the response was recieved :/
             }
@@ -197,7 +193,7 @@ function evictReplicas(json entries) {
         if (res is http:Response){
             var msg = res.getJsonPayload();
             if (msg is json){
-                log:printInfo("Entries sent to " + nodeItem.ip);
+                log:printInfo("Entries deleted from " + nodeItem.ip);
             }else {
                 log:printError("Invalid JSON", err = msg);
             }
@@ -267,7 +263,7 @@ function createCacheCleanupTask() returns task:Timer {
     return cleanerTimer;
 }
 
-function removeReplicas(string key, string originalNode) {
+function removeReplicas(string key) {
     string[] replicaNodes = hashRing.GetClosestN(key, replicationFact);
     foreach var node in replicaNodes {
         Node? replicaNode = cacheClientMap[node];

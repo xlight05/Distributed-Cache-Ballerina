@@ -18,7 +18,7 @@ service cacheService on cacheListner {
         json resp={};
         Cache? entry = cacheMap[key];
         if (entry is Cache){
-            resp = {name:entry.name,expiryTimeMillis:entry.expiryTimeMillis,LocalCacheConfig:entry.nearCache.getLocalCacheConfig ()};
+            resp = {name:entry.name,expiryTimeMillis:entry.expiryTimeMillis,LocalCacheConfig:entry.nearCache.getLocalCacheConfigAsJSON ()};
         }else {
             response.statusCode = 204;
             resp = { "message": "Cache not found" };

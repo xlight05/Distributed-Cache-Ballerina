@@ -18,11 +18,10 @@ task:Timer localCacheCleanupTimer = createlocalCacheCleanupTask();
 #
 # + value - cache value
 # + lastAccessedTime - last accessed time in ms of this value which is used to remove LRU cached values
-type LocalCacheEntry record {
+type LocalCacheEntry record {|
     anydata value;
     int lastAccessedTime;
-    !...
-};
+|};
 type LocalCacheConfig record {
     int capacity;
     float evictionFactor;
@@ -61,7 +60,7 @@ public type LocalCache object {
     //     self.config = cfg;
     // }
 
-    public function getLocalCacheConfig () returns json {
+    public function getLocalCacheConfigAsJSON () returns json {
         json|error localCacheConfig = json.convert(self.config);
         if (localCacheConfig is json){
             return localCacheConfig;

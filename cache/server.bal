@@ -4,7 +4,7 @@ import ballerina/config;
 import ballerina/log;
 import ballerina/http;
 
-listener http:Listener cacheListner = new(config:getAsInt("cache.port", default = 7000));
+listener http:Listener cacheListner = new(config:getAsInt("cache.port", defaultValue = 7000));
 
 # An entry of the replicated log
 # + term- Term of the entry

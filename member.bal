@@ -1,8 +1,8 @@
-import cache;
-import ballerina/runtime;
+// import cache;
+// import ballerina/runtime;
 
-public function main(string... args) {
+// public function main(string... args) {
 
-    cache:Cache oauthCache = new("oauthCache");
-     runtime:sleep(100000000000);
- }
+//     cache:Cache oauthCache = new("oauthCache");
+//      runtime:sleep(100000000000);
+//  }
