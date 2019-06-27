@@ -1,6 +1,5 @@
 .ballerina/
 .idea/
-Ballerina.toml
 Distributed-Cache-Ballerina.iml
 ballerina-internal.log
 target/

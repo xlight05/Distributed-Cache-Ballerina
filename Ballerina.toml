@@ -1,0 +1,7 @@
+[project]
+org-name = "anjana"
+version = "0.0.2"
+authors = ["anjana"]
+keywords = ["cache", "distributed-cache", "distributed-computing"]
+repository = "https://github.com/xlight05/Distributed-Cache-Ballerina"
+license = "Apache-2.0"
