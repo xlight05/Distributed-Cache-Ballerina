@@ -1,5 +1,5 @@
 import ballerina/io;
-import cache;
+import distributed_cache as cache;
 import ballerina/runtime;
 public function main(string... args) {
     _ = cache:connectToCluster();

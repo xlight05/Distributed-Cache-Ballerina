@@ -1,5 +1,5 @@
 import ballerina/io;
-import cache;
+import distributed_cache as cache;
 import ballerina/runtime;
 import ballerina/log;
 import ballerina/http;

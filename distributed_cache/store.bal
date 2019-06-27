@@ -4,7 +4,7 @@ import ballerina/io;
 import ballerina/math;
 import ballerina/time;
 import ballerina/task;
-import consistent_bound;
+import anjanas/consistent_bound;
 
 # cacheEntries contains all the entries in the current node
 map<CacheEntry> cacheEntries={};

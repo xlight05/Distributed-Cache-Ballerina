@@ -1,7 +1,7 @@
 import ballerina/io;
 import ballerina/math;
 import ballerina/crypto;
-import sort;
+import anjanas/sort;
 import ballerina/log;
 
 public type Consistent object {
@@ -202,7 +202,7 @@ public type Consistent object {
         return sum;
     }
 
-        # Converts key into the Decimal value of crc32 hash
+    # Converts key into the Decimal value of crc32 hash
     #+key- key that needs to be hashed
     #+return - decimal of the crc32 hash
     function getCrc32HashDecimal(string key) returns int {

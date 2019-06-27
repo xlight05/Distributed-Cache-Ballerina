@@ -112,7 +112,6 @@ function initLeaderVariables () {
 }
 
 function startLeaderTimeout (){
-            
     var attachResult = electTimer.attach(leaderElectionService);
     if (attachResult is error) {
         log:printWarn ("timer attach failed");
@@ -122,13 +121,6 @@ function startLeaderTimeout (){
             log:printWarn ("Election timer not started");
         }
     }
-    
-    // int interval = math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT); //random election timeouts to prevent split vote
-    // (function () returns error?) onTriggerFunction = electLeader; //election timer trigger
-    // function (error) onErrorFunction = timerError;
-    // electionTimer = new task:Timer(onTriggerFunction, onErrorFunction,
-    //     interval);
-    // electionTimer.start();
 }
 
 public function joinRaft() { //TODO join cluster
@@ -186,7 +178,7 @@ function electLeader() returns error?{ //TODO startLeaderElection
 
 function sendVoteRequestsToCluster(VoteRequest req) returns int {
     //votes for itself
-    future<()>?[] futureVotes=[];//ummmm
+    future<()>?[] futureVotes=[];
     foreach var (index,node) in raftClientMap {
         if (node.ip == currentNode) {
             continue;
@@ -351,7 +343,6 @@ function sendIndirectRequestToHealthyNode (SuspectNode node) returns http:Respon
     Node healthyNode = getHealthyNode();
     log:printInfo("Healthy Node :" + healthyNode.ip);
     json indirectRequestPayload = { ip: node.ip };
-    //change
     //increase timeout
     raftEndpoint = healthyNode.nodeEndpoint;
     return raftEndpoint->post("/raft/indirect/", indirectRequestPayload);
@@ -508,24 +499,16 @@ function resetElectionTimer() {
                 initialDelay: math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT)
             };
             electTimer = new(electConfiguration);
-                var attachResult = electTimer.attach(leaderElectionService);
-                if (attachResult is error) {
-                    log:printWarn ("Reset attatch failed");
-                } else {
-                    var startResult = electTimer.start();
-                    if (startResult is error) {
-                        log:printWarn ("Reset start failed");
-                    }
+            var attachResult = electTimer.attach(leaderElectionService);
+            if (attachResult is error) {
+                log:printWarn ("Reset attatch failed");
+            } else {
+                var startResult = electTimer.start();
+                if (startResult is error) {
+                    log:printWarn ("Reset start failed");
                 }
             }
-
-        // electionTimer.stop();
-        // (function () returns error?) onTriggerFunction = electLeader;
-
-        // function (error) onErrorFunction = timerError;
-        // electionTimer = new task:Timer(onTriggerFunction, onErrorFunction,
-        //     interval);
-        // electionTimer.start();
+        }
     }
 }
 
@@ -543,13 +526,6 @@ function startHeartbeatTimer() {
             log:printWarn ("Start hearbeat timer start failed");
         }
     }
-    // int interval = HEARTBEAT_TIMEOUT;
-    // (function () returns error?) onTriggerFunction = sendHeartbeats;
-
-    // function (error) onErrorFunction = timerError;
-    // heartbeatTimer = new task:Timer(onTriggerFunction, onErrorFunction,
-    //     interval);
-    // heartbeatTimer.start();
 }
 
 function startElectionTimer() {
@@ -567,13 +543,6 @@ function startElectionTimer() {
             log:printWarn ("Start election timer start failed");
         }
     }
-    // int interval = math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT);
-    // (function () returns error?) onTriggerFunction = electLeader;
-
-    // function (error) onErrorFunction = timerError;
-    // electionTimer = new task:Timer(onTriggerFunction, onErrorFunction,
-    //     interval, delay = interval);
-    // electionTimer.start();
 }
 
 //TODO linearizable semantics

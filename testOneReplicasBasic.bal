@@ -1,12 +1,12 @@
 import ballerina/test;
 import ballerina/config;
 import ballerina/io;
-import cache;
+import distributed_cache as cache;
 
 
 @test:Config
 function testOneReplicasBasic() {
-    _ = cache:initNodeConfig();
+    cache:connectToCluster();
     cache:Cache oauthCache = new("oauthCache",expiryTimeMillis=30000);
 
     oauthCache.put("1", "1");

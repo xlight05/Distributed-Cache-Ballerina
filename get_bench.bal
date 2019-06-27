@@ -1,4 +1,4 @@
-import cache;
+import distributed_cache as cache;
 import ballerina/math;
 import ballerina/io;
 import ballerina/time;

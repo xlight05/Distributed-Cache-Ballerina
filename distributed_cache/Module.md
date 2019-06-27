@@ -1,13 +1,21 @@
-# Distributed-Cache-Ballerina
+# Package Overview
+Distributed Cache for ballerina using Raft
+
+## Compatibility
+
+|                                 |       Version                  |
+|  :---------------------------:  |  :---------------------------: |
+|  Ballerina Language             |   0.991.0                      |
 
 ### Features
 
-- Core Distributed in memory storage using consistant hashing
-- Node Add/Remove in runtime with data realocation
+- Core Distributed in memory storage using consistent hashing
+- Node Add/Remove in runtime with data reallocation
 - Data Replication with Dynamic/Adaptive Replication
 - Failure detection
 - Cluster Discovery
 - Consensus protocol
+
 
 ### Todos
 
@@ -15,8 +23,6 @@
 - Make Raft reusable with objects
 
 ### Get started
-
-#### Sample Application
 ```ballerina
     import anjanas/distributed_cache as cache;
     
@@ -25,11 +31,6 @@
     oauthCache.put("Name", "Ballerina");
     io:println (<string>oauthCache.get("Name"));
 ```
-
-#### Sample cluster
-If you just want to see distributed cache in action in cluster mode you can simply execute run the following shell 
-script to spawn processes without doing any configurations yourself  
- `./ThreeNode.sh`
 
 ### Configuration documentation
 ```toml
@@ -61,4 +62,4 @@ backoff.fact=1 # Backoff factor for failure detector
 [consistent.hashing]
 partitions=7 # Number of partitions in the hash ring
 ```
-## Cluster Mode
+
