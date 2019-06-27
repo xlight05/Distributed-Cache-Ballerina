@@ -5,12 +5,12 @@ Distributed Cache for ballerina
 
 | Ballerina Version  |
 |:------------------:|
-| 0.983.0            |
+| 0.991.0           |
 
 ### Features
 
-- Core Distributed in memory storage using consistant hashing
-- Node Add/Remove in runtime with data realocation
+- Core Distributed in memory storage using consistent hashing
+- Node Add/Remove in runtime with data reallocation
 - Data Replication with Dynamic/Adaptive Replication
 - Failure detection
 - Cluster Discovery
@@ -19,13 +19,15 @@ Distributed Cache for ballerina
 
 ### Todos
 
-- Refactor code,Documentation
 - Performance analysis
-- Healthcheck feature
+- Make Raft reusable with objects
 
 ### Get started
-
-	_ = cache:initNodeConfig();
+```ballerina
+    import anjanas/cache;
+    
+    cache:connectToCluster();
     cache:Cache oauthCache = new("oauthCache");
     oauthCache.put("Name", "Ballerina");
     io:println (<string>oauthCache.get("Name"));
+```

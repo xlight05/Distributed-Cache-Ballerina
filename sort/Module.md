@@ -2,20 +2,20 @@ Connects to sorting algorithms from Ballerina.
 
 # Package Overview
 
-The `sort` allows you to perform efficient sorting algorithms. Functionality of merge sort is provided by `mergeSort` function.
+Updated version of chamil's `sort` library. This library allows you to sort number of integers.
 
 ## Compatibility
 
 |                                 |       Version                  |
 |  :---------------------------:  |  :---------------------------: |
-|  Ballerina Language             |   0.983.0                      |
+|  Ballerina Language             |   0.991.0                      |
 
 ## Sample
 
-First, import the `chamil/sort` package into the Ballerina project.
+First, import the `anjanas/sort` package into the Ballerina project.
 
 ```ballerina
-import chamil/sort;
+import anjanas/sort;
 ```
 
 The `mergeSort(int[] unsortedArray)` function retrieves the sorted array of integer for the given unsorted array.

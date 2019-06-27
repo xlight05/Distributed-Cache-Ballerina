@@ -15,7 +15,14 @@ const int CACHE_CLEANUP_START_DELAY = 0;
 # Cache cleanup task invoking interval in ms.
 const int CACHE_CLEANUP_INTERVAL = 5000;
 
-task:Timer cacheCleanupTimer = createCacheCleanupTask();
+task:TimerConfiguration cacheCleanupTimerConfiguration = {
+    interval: CACHE_CLEANUP_INTERVAL,
+    initialDelay: CACHE_CLEANUP_START_DELAY
+};
+// task:Scheduler cacheCleanupTimer = new(cacheCleanupTimerConfiguration);
+// var attachCacheCleanerResult = cacheCleanupTimer.attach(cacheCleanupService);
+// var timerStartResult = cacheCleanupTimer.start();
+listener task:Listener cacheCleanupTimer = new(cacheCleanupTimerConfiguration);
 
 //Returns single cache entry according to given key
 function getCacheEntry(string key) returns CacheEntry? {
@@ -256,11 +263,11 @@ function cacheExpiry()returns error?  {
 }
 
 
-function createCacheCleanupTask() returns task:Timer {
-    (function () returns error?) onTriggerFunction = cacheExpiry;
-    task:Timer cleanerTimer = new(onTriggerFunction, (), CACHE_CLEANUP_INTERVAL, delay = CACHE_CLEANUP_START_DELAY);
-    cleanerTimer.start();
-    return cleanerTimer;
+# Cleanup service which cleans the cache periodically.
+service cacheCleanupService on cacheCleanupTimer {
+    resource function onTrigger() {
+        checkpanic cacheExpiry();
+    }
 }
 
 function removeReplicas(string key) {

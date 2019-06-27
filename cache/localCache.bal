@@ -11,9 +11,6 @@ const int LOCAL_CACHE_CLEANUP_START_DELAY = 0;
 # Cache cleanup task invoking interval in ms.
 const int LOCAL_CACHE_CLEANUP_INTERVAL = 5000;
 
-# Cleanup task which cleans the cache periodically.
-task:Timer localCacheCleanupTimer = createlocalCacheCleanupTask();
-
 # Represents a cache entry.
 #
 # + value - cache value
@@ -54,6 +51,23 @@ public type LocalCache object {
         self.config.capacity = capacity;
         self.config.evictionFactor = evictionFactor;
         localCacheMap[system:uuid()]=self;
+
+        task:TimerConfiguration localCacheCleanupTimerConfiguration = {
+            interval: CACHE_CLEANUP_INTERVAL,
+            initialDelay: CACHE_CLEANUP_START_DELAY
+        };
+        task:Scheduler localCacheCleanupTimer = new(localCacheCleanupTimerConfiguration);
+
+        var attachLocalCacheCleanerResult = localCacheCleanupTimer.attach(localCacheCleanupService);
+        if (attachLocalCacheCleanerResult is error) {
+            error e = error("Failed to create the cache cleanup task.");
+            panic e;
+        }
+        var localTimerStartResult = localCacheCleanupTimer.start();
+        if (localTimerStartResult is error) {
+            error e = error("Failed to start the cache cleanup task.");
+            panic e;
+        }
     }
 
     // public function __init(LocalCacheConfig cfg) {
@@ -221,12 +235,9 @@ function checkAndAdd(int numberOfKeysToEvict, string[] cacheKeys, int[] timestam
     }
 }
 
-# Creates a new cache cleanup task.
-#
-# + return - cache cleanup task ID
-function createlocalCacheCleanupTask() returns task:Timer {
-    (function () returns error?) onTriggerFunction = runCacheExpiry;
-    task:Timer localTimer = new(onTriggerFunction, (), LOCAL_CACHE_CLEANUP_INTERVAL, delay = LOCAL_CACHE_CLEANUP_START_DELAY);
-    localTimer.start();
-    return localTimer;
-}
+# Cleanup service which cleans the cache periodically.
+service localCacheCleanupService = service {
+    resource function onTrigger() {
+        checkpanic runCacheExpiry();
+    }
+};

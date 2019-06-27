@@ -24,7 +24,7 @@ public type Consistent object {
         foreach var i in 0...self.replicationFactor - 1 {
             string key = member + i;
             int hash = getCrc32HashDecimal(key);
-            self.ring[<string>hash] = member;
+            self.ring[string.convert(hash)] = member;
             self.sortedSet[self.sortedSet.length()] = hash;
             self.sortedSet = sort:mergeSort(self.sortedSet);
             self.members[member] = member;
@@ -36,7 +36,7 @@ public type Consistent object {
         map<float> loadsTemp={};
         map<string> partitionsTemp={};
         foreach var partID in 0...self.partitionCount - 1  {
-            int key = getCrc32HashDecimal(<string>partID);
+            int key = getCrc32HashDecimal(string.convert(partID));
             int i = 0;
             int j = self.sortedSet.length();
             while (i < j) {
@@ -70,10 +70,10 @@ public type Consistent object {
                 panic err;
             }
             int i = self.sortedSet[idx];
-            var member = self.ring[<string>i]?:"";
+            var member = self.ring[string.convert(i)]?:"";
             float loadT = loadsTemp[member]?:0.0;
             if (loadT + 1 <= avgLoad){
-                partitionsTemp[<string>partID] = member;
+                partitionsTemp[string.convert(partID)] = member;
                 loadsTemp[member]=(loadsTemp[member]?:0.0)+1;
                 return;
             }
@@ -110,7 +110,7 @@ public type Consistent object {
     #+ partID - id of the partition
     #+ return - owner node of the partition
     function getPartitionOwner(int partID) returns string {
-        return self.partitions[<string>partID]?:"";
+        return self.partitions[string.convert(partID)]?:"";
     }
 
     # GetClosestN returns the closest N member to a key in the hash ring. This may be useful to find members for replication.
@@ -131,7 +131,7 @@ public type Consistent object {
                 ownerKey = nodeKey;
             }
             keys[keys.length()] = nodeKey;
-            kmems[<string>nodeKey] = v;
+            kmems[string.convert(nodeKey)] = v;
         }
         //sort members
         keys = sort:mergeSort(keys);
@@ -150,7 +150,7 @@ public type Consistent object {
                 idx = 0;
             }
             int keyEntry = keys[idx];
-            res[res.length()]= kmems[<string>keyEntry]?:"";
+            res[res.length()]= kmems[string.convert(keyEntry)]?:"";
         }
         return res;
     }
@@ -165,7 +165,7 @@ public type Consistent object {
         foreach var i in 0...self.replicationFactor - 1 {
             string key = nodeKey + i;
             int hash = getCrc32HashDecimal(key);
-            _ = self.ring.remove(<string>hash);
+            _ = self.ring.remove(string.convert(hash));
 
             foreach var item in self.sortedSet {
                 if (hash == item){
@@ -206,7 +206,7 @@ public type Consistent object {
     #+key- key that needs to be hashed
     #+return - decimal of the crc32 hash
     function getCrc32HashDecimal(string key) returns int {
-        string crc32HashHex = crypto:crc32(key);
+        string crc32HashHex = crypto:crc32b(key);
         int crc32HashDecimal = hexToDecimal(crc32HashHex);
         return crc32HashDecimal;
     }

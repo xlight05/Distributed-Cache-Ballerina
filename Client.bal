@@ -7,7 +7,7 @@ import ballerina/config;
 
 public function main(string... args) {
 
-    _ = cache:initNodeConfig();
+    cache:connectToCluster();
     cache:Cache oauthCache = new("oauthCache",expiryTimeMillis=30000);
 
     oauthCache.put("1", "1");
@@ -41,5 +41,5 @@ public function main(string... args) {
 
 
     //io:println(<string>oauthCache.get("Name"));
-    runtime:sleep(100000000);
+    // runtime:sleep(100000000);
 }

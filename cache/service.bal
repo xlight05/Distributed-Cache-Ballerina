@@ -21,7 +21,8 @@ service cacheService on cacheListner {
             resp = {name:entry.name,expiryTimeMillis:entry.expiryTimeMillis,LocalCacheConfig:entry.nearCache.getLocalCacheConfigAsJSON ()};
         }else {
             response.statusCode = 204;
-            resp = { "message": "Cache not found" };
+            json resNotFound = { "message": "Cache not found" };
+            resp = resNotFound;
         }
         response.setJsonPayload(untaint resp, contentType = "application/json");
         var result =caller->respond(response);
@@ -60,7 +61,7 @@ service cacheService on cacheListner {
                 resp = responseJSON;
             }
         }else {//TODO Revisit
-            res.statusCode = 204;
+            res.statusCode = 404;
             resp = { "message": "Entry not found"};
         }
         res.setJsonPayload(untaint resp, contentType = "application/json");
@@ -130,7 +131,7 @@ service cacheService on cacheListner {
         if (obj is json){
             boolean status = cacheEntries.remove(obj["key"].toString());
             if (!status){
-                res.statusCode = 204;
+                res.statusCode = 404;
             }
             resp = { "message": "Entry executed "+status};
         }else {

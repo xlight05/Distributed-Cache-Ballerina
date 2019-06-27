@@ -12,7 +12,7 @@ const int VOTE_DECLINED = 0;
 const int FOLLOWER_TERM_IS_HIGHER_THAN_LEADER = -2;
 
 # Current node IP
-string currentNode = config:getAsString("raft.ip") + ":" + config:getAsString("raft.port");
+string currentNode = config:getAsString("cache.ip") + ":" + config:getAsString("cache.port");
 
 http:Client raftEndpoint = new (currentNode);
 
@@ -47,8 +47,15 @@ int commitIndex = 0;
 
 # The last command in the log to be applied to the state machine.
 int lastApplied = 0;
-task:Timer? electionTimer;
-task:Timer? heartbeatTimer;
+
+task:TimerConfiguration initElectConfiguration = {
+    interval: math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT),
+    initialDelay: 0
+};
+task:Scheduler electTimer = new(initElectConfiguration);
+
+// task:Timer? electionTimer;
+// task:Timer? heartbeatTimer;
 map<int> voteResponsesOfCandidate={};
 
 # nextIndex is a guess as to how much of our log (as leader) matches that of
@@ -105,12 +112,23 @@ function initLeaderVariables () {
 }
 
 function startLeaderTimeout (){
-    int interval = math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT); //random election timeouts to prevent split vote
-    (function () returns error?) onTriggerFunction = electLeader; //election timer trigger
-    function (error) onErrorFunction = timerError;
-    electionTimer = new task:Timer(onTriggerFunction, onErrorFunction,
-        interval);
-    electionTimer.start();
+            
+    var attachResult = electTimer.attach(leaderElectionService);
+    if (attachResult is error) {
+        log:printWarn ("timer attach failed");
+    } else {
+        var startResult = electTimer.start();
+        if (startResult is error) {
+            log:printWarn ("Election timer not started");
+        }
+    }
+    
+    // int interval = math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT); //random election timeouts to prevent split vote
+    // (function () returns error?) onTriggerFunction = electLeader; //election timer trigger
+    // function (error) onErrorFunction = timerError;
+    // electionTimer = new task:Timer(onTriggerFunction, onErrorFunction,
+    //     interval);
+    // electionTimer.start();
 }
 
 public function joinRaft() { //TODO join cluster
@@ -168,7 +186,7 @@ function electLeader() returns error?{ //TODO startLeaderElection
 
 function sendVoteRequestsToCluster(VoteRequest req) returns int {
     //votes for itself
-    future<()>[] futureVotes=[];
+    future<()>?[] futureVotes=[];//ummmm
     foreach var (index,node) in raftClientMap {
         if (node.ip == currentNode) {
             continue;
@@ -181,7 +199,9 @@ function sendVoteRequestsToCluster(VoteRequest req) returns int {
     }
     foreach var i in futureVotes { //change this in to quoram
         //waits for vote requests
-        _ = wait i;
+        if (i is future<()>){
+            _ = wait i;
+        }
     }
     int candidateVoteCount = 1;
     foreach var (index,voteStatus) in voteResponsesOfCandidate {
@@ -235,7 +255,7 @@ function sendHeartbeats() returns error?{
     if (state != "Leader") {
         return;
     }
-    future <()> [] heartbeatAsync=[];
+    future <()>? [] heartbeatAsync=[];
     foreach var (index,node) in raftClientMap {
         if (node.ip == currentNode) {
             continue;
@@ -246,7 +266,9 @@ function sendHeartbeats() returns error?{
     }
     foreach var item in heartbeatAsync {
         //wait for heartbeat responses
-        _ = wait item;
+        if (item is future<()>){
+            _ = wait item;
+        }
     }
     //start committing entries
     commitEntry();
@@ -322,7 +344,7 @@ function createSuspectNode(Node node,http:ClientEndpointConfig suspectNodeConfig
 # Starts processing existing suspects once a new leader is elected
 function startProcessingSuspects() {
     foreach var (index,suspect) in suspectNodes {
-        _ = start checkSuspectedNode(suspect);
+        _ = start checkSuspectedNode(untaint suspect);
     }
 }
 function sendIndirectRequestToHealthyNode (SuspectNode node) returns http:Response|error{
@@ -476,34 +498,82 @@ function timerError(error e) {
 function resetElectionTimer() {
     int interval = math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT);
     lock {
-        electionTimer.stop();
-        (function () returns error?) onTriggerFunction = electLeader;
+        var detachResult = electTimer.detach(leaderElectionService);
+        if (detachResult is error) {
+            log:printWarn ("Reset detatch failed");
+        }else{
+            var stopResult = electTimer.stop();
+            task:TimerConfiguration electConfiguration = {
+                interval: math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT),
+                initialDelay: math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT)
+            };
+            electTimer = new(electConfiguration);
+                var attachResult = electTimer.attach(leaderElectionService);
+                if (attachResult is error) {
+                    log:printWarn ("Reset attatch failed");
+                } else {
+                    var startResult = electTimer.start();
+                    if (startResult is error) {
+                        log:printWarn ("Reset start failed");
+                    }
+                }
+            }
 
-        function (error) onErrorFunction = timerError;
-        electionTimer = new task:Timer(onTriggerFunction, onErrorFunction,
-            interval);
-        electionTimer.start();
+        // electionTimer.stop();
+        // (function () returns error?) onTriggerFunction = electLeader;
+
+        // function (error) onErrorFunction = timerError;
+        // electionTimer = new task:Timer(onTriggerFunction, onErrorFunction,
+        //     interval);
+        // electionTimer.start();
     }
 }
 
 function startHeartbeatTimer() {
-    int interval = HEARTBEAT_TIMEOUT;
-    (function () returns error?) onTriggerFunction = sendHeartbeats;
+    task:TimerConfiguration heartbeatConfiguration = {
+        interval: HEARTBEAT_TIMEOUT
+    };
+    task:Scheduler timer = new(heartbeatConfiguration);
+    var attachResult = timer.attach(heartbeatService);
+    if (attachResult is error) {
+        log:printWarn ("Start hearbeat attatch failed");
+    } else {
+        var startResult = timer.start();
+        if (startResult is error) {
+            log:printWarn ("Start hearbeat timer start failed");
+        }
+    }
+    // int interval = HEARTBEAT_TIMEOUT;
+    // (function () returns error?) onTriggerFunction = sendHeartbeats;
 
-    function (error) onErrorFunction = timerError;
-    heartbeatTimer = new task:Timer(onTriggerFunction, onErrorFunction,
-        interval);
-    heartbeatTimer.start();
+    // function (error) onErrorFunction = timerError;
+    // heartbeatTimer = new task:Timer(onTriggerFunction, onErrorFunction,
+    //     interval);
+    // heartbeatTimer.start();
 }
 
 function startElectionTimer() {
-    int interval = math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT);
-    (function () returns error?) onTriggerFunction = electLeader;
+    task:TimerConfiguration electConfiguration = {
+        interval: math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT),
+        initialDelay: math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT)
+    };
+    electTimer = new(electConfiguration);
+    var attachResult = electTimer.attach(leaderElectionService);
+    if (attachResult is error) {
+        log:printWarn ("Start election attatch failed");
+    } else {
+        var startResult = electTimer.start();
+        if (startResult is error) {
+            log:printWarn ("Start election timer start failed");
+        }
+    }
+    // int interval = math:randomInRange(MIN_ELECTION_TIMEOUT, MAX_ELECTION_TIMEOUT);
+    // (function () returns error?) onTriggerFunction = electLeader;
 
-    function (error) onErrorFunction = timerError;
-    electionTimer = new task:Timer(onTriggerFunction, onErrorFunction,
-        interval, delay = interval);
-    electionTimer.start();
+    // function (error) onErrorFunction = timerError;
+    // electionTimer = new task:Timer(onTriggerFunction, onErrorFunction,
+    //     interval, delay = interval);
+    // electionTimer.start();
 }
 
 //TODO linearizable semantics
@@ -512,8 +582,9 @@ function clientRequest(string command) returns boolean {
     if (state == "Leader") {
         int entryIndex = log.length();
         log[entryIndex] = { term: currentTerm, command: command };
-        future<error?> ee = start sendHeartbeats();
-        _ = wait ee;
+        // future<error?> ee = start sendHeartbeats();
+        // _ = wait ee;
+        error? err = sendHeartbeats();
         //without majority no nop :S
         //check if commited
         if (commitIndex >= entryIndex) {
@@ -568,9 +639,9 @@ function apply(string command) {
         raftClientMap[ip] = raftNode;
 
         http:ClientEndpointConfig cacheClientCfg = {
-            timeoutMillis: config:getAsInt("cache.request.timeout", default = 2000),
+            timeoutMillis: config:getAsInt("cache.request.timeout", defaultValue = 2000),
             retryConfig: {
-                interval: config:getAsInt("cache.request.timeout", default = 2000)/2,
+                interval: config:getAsInt("cache.request.timeout", defaultValue = 2000)/2,
                 count: 1,
                 backOffFactor: 1.0,
                 maxWaitInterval: 5000
@@ -581,7 +652,7 @@ function apply(string command) {
         cacheClientMap[ip]=cacheNode;
 
         http:ClientEndpointConfig relocationConfig = {
-            timeoutMillis: config:getAsInt("cache.relocation.timeout", default = 10000)
+            timeoutMillis: config:getAsInt("cache.relocation.timeout", defaultValue = 10000)
         };
         //http:Client relocationClient = new (ip,config=relocationConfig);
         Node relocationNode = {ip:ip,nodeEndpoint:createHttpClient(ip,relocationConfig)};
@@ -597,7 +668,7 @@ function apply(string command) {
         http:ClientEndpointConfig cc = { timeoutMillis: 60000 };
         SuspectNode node = { ip: ip, clientEndpoint: createHttpClient(ip,cc), suspectRate: 0 };
         suspectNodes[ip] = node;
-        _ = start checkSuspectedNode(node);
+        _ = start checkSuspectedNode(untaint node);
         printSuspectedNodes();
     }
 
@@ -644,3 +715,15 @@ function printSuspectedNodes() {
         io:println(node.ip);
     }
 }
+
+service leaderElectionService = service {
+    resource function onTrigger() {
+        var result = electLeader();
+    }
+};
+
+service heartbeatService = service {
+    resource function onTrigger() {
+        var result = sendHeartbeats();
+    }
+};
